@@ -2,11 +2,11 @@
 
 SAHYOG is a simulated health-monitoring and emergency-response prototype. Its target architecture is a Flutter Android app, FastAPI backend, PostgreSQL database, and React caregiver dashboard. The three demo scenarios are `NORMAL`, `TRUE_ANOMALY`, and `FALSE_ALARM`; they are intended to use the same processing pipeline.
 
-This repository currently contains the project requirements and architecture documents. Application components and their run commands are being added in phases. Do not treat simulated readings or notifications as real wearable measurements or delivered emergency communications.
+This repository contains the project requirements, architecture, and initial backend tooling. Backend application code, mobile app, and dashboard are being added in phases. Do not treat simulated readings or notifications as real wearable measurements or delivered emergency communications.
 
 ## Technology baseline
 
-The proposed integration baseline is Python 3.12, uv, FastAPI, SQLAlchemy 2.x, Alembic, PostgreSQL 16, Psycopg 3, Pydantic Settings, pytest, Ruff, and GitHub Actions. Mobile and dashboard tooling follows the approved project architecture. Backend manifests and application configuration are not part of the repository foundation phase.
+The adopted integration baseline is Python 3.12, uv, FastAPI, Uvicorn, SQLAlchemy 2.x with synchronous database access, Alembic, PostgreSQL 16, Psycopg 3 with its binary extra, Pydantic Settings, pytest, Ruff, and GitHub Actions. Mobile and dashboard tooling follows the approved project architecture. Backend application configuration remains owned by Shubhankar.
 
 ## Windows development prerequisites
 
@@ -16,6 +16,7 @@ Install the project toolchain using the official distribution instructions for e
 - Python 3.12
 - uv
 - PostgreSQL 16 and its command-line client (`psql`)
+- Uvicorn, Psycopg, and other backend Python dependencies installed by uv from the backend lockfile
 - Flutter SDK and Android SDK for mobile work
 - Node.js for dashboard work; the exact version will be recorded with the dashboard manifest
 
@@ -31,7 +32,17 @@ flutter --version
 node --version
 ```
 
-Some tools are only needed for their corresponding component. The backend manifest, database settings, migration commands, and component startup commands will be documented after their implementation and integration review. No application start command is available in the current foundation-only tree.
+Some tools are only needed for their corresponding component. Install backend dependencies and run checks from PowerShell with:
+
+```powershell
+Set-Location E:\sahyog-repo\backend
+uv sync --locked --group migrations --group dev
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked pytest
+```
+
+The application source, database settings, and migration environment are not present yet, so backend startup and database connection commands will be documented after those owner-managed components are implemented. Psycopg's binary extra avoids requiring a local compiler or separately installed client library for the Python driver; a local PostgreSQL 16 server is still required for database-backed work.
 
 ## Project documents
 
