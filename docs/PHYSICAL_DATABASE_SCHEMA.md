@@ -1,30 +1,33 @@
 # SAHYOG — Physical Database Schema Specification
 
-**Status:** Proposed physical mapping for review; not an approved or implemented schema
+**Status:** Approved physical schema baseline; implementation status updated for Phase 0A closeout
 **Baseline:** `docs/DATABASE_SCHEMA_DESIGN.md`
 **Scope:** PostgreSQL table, constraint, index, ORM, migration, concurrency, and test design
 
-> This file translates the logical proposal into a reviewable PostgreSQL specification. No models, migrations, SQL files, APIs, or application behavior are created or claimed to exist by this document. Values marked proposed require owner review before implementation.
+> This file translates the logical proposal into the approved PostgreSQL schema baseline. The nine ORM models and initial Alembic migration implement this baseline. API contracts, application engine/session integration, runtime persistence, and application-level database operations remain outside this document and are not claimed to be implemented. Any item still marked proposed or unresolved remains subject to its stated owner review.
 
 ## 1. Scope and assumptions
 
 ### Repository facts
 
 - **CONFIRMED:** The active branch is `Software-integration-and-database`, tracking `origin/Software-integration-and-database`.
-- **CONFIRMED:** `backend/pyproject.toml` declares Python `>=3.12,<3.13`, package name `sahyog-backend`, version `0.1.0`, and `package = false` because an installable backend package does not yet exist.
+- **CONFIRMED:** `backend/pyproject.toml` declares Python `>=3.12,<3.13`, package name `sahyog-backend`, version `0.1.0`, and `package = false`; the backend source package exists and is run from the workspace rather than installed as a wheel.
 - **CONFIRMED:** The manifest declares FastAPI, Uvicorn, Pydantic Settings, SQLAlchemy `>=2.0,<2.1`, Psycopg 3 binary `>=3.3,<3.4`, Alembic `>=1.20,<1.21` in the migrations group, and pytest/Ruff in the dev group. `backend/uv.lock` exists.
-- **CONFIRMED:** The tracked backend currently contains only `pyproject.toml`, `uv.lock`, and `tests/test_project_metadata.py`. There is no application package, engine/session module, model module, or Alembic environment/revision. The CI workflow installs locked dependencies and runs Ruff and pytest; it has no PostgreSQL service.
-- **CONFIRMED:** The prior working tree already contained untracked `docs/DATABASE_SCHEMA_DESIGN.md`; it is the logical design input and is not modified by this task.
+- **CONFIRMED:** Nine SQLAlchemy ORM models are registered with the shared `Base.metadata`. Alembic configuration and environment, a migration README/template, and one initial revision exist. The transaction-boundary fix explicitly rolls back the role-verification SELECT transaction before Alembic opens its migration transaction.
+- **CONFIRMED (reported for this closeout):** The initial migration has been applied to `sahyog_dev` and `sahyog_test`. Each database has ten tables owned by `sahyog_migrator` (the nine application tables plus Alembic's version table). `sahyog_app` has schema `USAGE` and does not have schema `CREATE`.
+- **Provisioning procedure:** Fresh-volume setup and non-destructive existing-volume role instructions are documented in `docs/DATABASE_ROLE_PROVISIONING.md`.
+- **CONFIRMED:** Application engine/session integration, runtime persistence, and application-level database DML permission provisioning remain pending. The CI workflow runs locked Ruff and pytest checks but does not provide a PostgreSQL service.
+- **HISTORICAL:** Earlier repository inspections preceded the ORM models and Alembic implementation; their descriptions of a backend without models or migrations no longer describe the current repository.
 
 ### Proposed physical-design assumptions
 
 - **PROPOSED:** PostgreSQL 16 is the target database; access is synchronous SQLAlchemy 2.x through Psycopg 3. Alembic will own schema changes.
 - **PROPOSED:** UUID primary keys, `TIMESTAMPTZ` instants, and normalized UTC values follow the logical design. UUID generation location (application versus database) remains unresolved; no server default is assumed here.
 - **PROPOSED:** Current prototype readings are simulated heart-rate values in BPM. No wearable, BLE, provider-specific integration, clinical diagnosis, or raw source-payload persistence is included.
-- **UNRESOLVED:** The logical design is not a migration-ready contract. Every table, optionality, field vocabulary, identity choice, retention policy, and owner contract below needs approval before implementation.
+- **HISTORICAL:** Before this physical baseline was approved, the logical design alone was not a migration-ready contract. The nine core tables are now implemented; optional tables, runtime vocabularies, retention policy, and owner contracts that remain unresolved require approval before they are added or used by application behavior.
 - **PROPOSED:** A SQLAlchemy `MetaData` naming convention is used for generated constraints; explicit names below take precedence. This document supplies deterministic names to simplify Alembic review and downgrade.
 
-The physical type mapping below is a proposal, not evidence that any schema already exists. “No server default” means the application must supply the value or a later approved migration must define a default. Do not use database defaults to invent product behavior.
+The physical type mapping below is the implemented baseline for the nine core tables; optional candidates and items still marked proposed remain outside the initial schema. “No server default” means the application must supply the value or a later approved migration must define a default. Do not use database defaults to invent product behavior.
 
 ## 2. Table-by-table specification
 
@@ -44,7 +47,7 @@ Section 4 is the authoritative complete index inventory for every table below, i
 
 ### 2.2 Required and optional tables
 
-Types and constraints in this section are **PROPOSED**. “Required” means needed for the current prototype design, not implemented or owner-approved. Optional tables remain included as candidates and must not be created unless their persistence need is accepted.
+The nine core tables in the approved physical schema are implemented by the ORM and initial migration. Decision labels in the table descriptions preserve the original design provenance; they do not mean the implemented core schema is awaiting approval. Optional tables remain candidates and must not be added unless their persistence need is accepted.
 
 #### `users` — required identity anchor (fields unresolved)
 
@@ -425,16 +428,16 @@ All unique FK-target entries above are explicitly needed by composite references
 - Map ORM relationships with explicit `foreign_keys`/`primaryjoin` where a subject has multiple user roles or incident has both direct trigger and association links. Avoid eager loading collections by default; use explicit `selectinload` for bounded collections and pagination/limits for history. Avoid unbounded `joinedload` across readings/evidence/attempts.
 - Avoid ORM `cascade="all, delete-orphan"` for durable health, incident, authorization, timeline, and run history. Database FKs remain restrictive. Any in-memory cascade must not imply database deletion policy.
 - Use a SQLAlchemy naming convention on `MetaData` (proposed): `ix_%(table_name)s_%(column_0_name)s`, `uq_%(table_name)s_%(column_0_name)s`, `ck_%(table_name)s_%(constraint_name)s`, `fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s`, `pk_%(table_name)s`. For CHECKs, pass the semantic suffix as `constraint_name` so the resulting DDL name matches the `ck_<table>_<suffix>` names above. Give multi-column indexes and all named constraints explicit names from this specification; ensure generated names remain unique and under PostgreSQL's identifier limit.
-- **Integration point fact:** No engine/session bootstrap module currently exists. Shubhankar owns creating it. Role 5's models should expose metadata/imports to the agreed bootstrap/Alembic environment without creating a competing engine, session factory, settings object, or database URL convention. The exact import path is unresolved and must be agreed before model integration.
+- **Integration point fact:** No application engine/session bootstrap module exists; Shubhankar owns creating it. Role 5's models expose shared metadata/imports without creating a competing engine, session factory, settings object, or application database URL convention. The application bootstrap import path remains unresolved and must be agreed before runtime integration.
 
 ## 6. Alembic migration plan
 
-Alembic is a declared migration dependency but is not initialized. Do not treat the ordering below as generated migration code.
+Alembic is initialized and the single initial revision implements the selected core schema. The revision has been applied to both development and test databases as reported above. The dependency ordering below records the schema relationships and remains useful for reviewing future revisions; it is not an instruction to recreate the initial migration.
 
 ### Upgrade order
 
 1. Agree ID/time conventions, table inclusion, names, vocabularies, application transaction contracts, and retention gates.
-2. Initialize the Alembic environment only in a separately authorized implementation task; integrate it with Shubhankar's eventual settings/bootstrap rather than inventing a second connection configuration.
+2. **Implemented:** Alembic environment and initial revision use the shared `Base.metadata` and the dedicated `SAHYOG_MIGRATION_DATABASE_URL` contract. The migration connection verifies the `sahyog_migrator` role and does not create or reuse the application engine/session.
 3. Create foundational `users` and optional `profiles`, `emergency_contacts`, `caregiver_authorizations`; create `demo_runs` after `users`.
 4. Create `health_readings` after `users` and `demo_runs`; create `anomaly_events` after `users` and `demo_runs`.
 5. Create `incidents` after users, runs, and anomaly events so trigger composite references can be added. Where circular ordering arises, create base table first, then add named composite constraints after both sides exist.
@@ -484,21 +487,42 @@ A conditional-write alternative is acceptable only if the worker's conditional s
 
 The logical design leaves exact key formats to owners. Persist approved identities at their documented scopes: demo start in `demo_runs`, reading ingestion in `health_readings`, detector dedupe in `anomaly_events`, incident create in `incidents`, verification in `verification_responses`, timeout attempt in `escalation_attempts`, notification attempt in `notification_attempts` if adopted, and timeline append in `incident_timeline_events`. Unique constraints prevent duplicate persistence under concurrency; Shubhankar must handle a unique conflict by returning/reusing the prior operation result only according to the approved API contract. Intentional notification retries use distinct logical attempt identities. A unique constraint alone does not validate semantics or invoke providers.
 
-## 8. PostgreSQL integration test strategy (not implemented)
+## 8. PostgreSQL integration tests and remaining strategy
 
-Tests should run against an isolated disposable PostgreSQL 16 instance and use the actual migrations/constraints. No shared or production database and no real notification credentials.
+The repository implements 27 PostgreSQL integration tests in
+`backend/tests/test_postgresql_schema.py`, using the guarded fixtures in
+`backend/tests/conftest.py`. They target the isolated `sahyog_test` database
+and actual PostgreSQL schema constraints. No shared or production database or
+real notification credentials are used. Test implementation is distinct from
+successful runtime validation against PostgreSQL.
 
-1. **Composite FK enforcement:** reject a child whose `(demo_run_id, subject_user_id)` does not exist; reject a run whose subject differs from its reading, anomaly, or incident.
-2. **Same subject/run evidence:** reject anomaly-reading links with a mismatched subject or run; reject incident-anomaly associations with a mismatched subject or run.
-3. **Invalid incident trigger:** reject a runless incident with non-null `triggering_anomaly_event_id` via `ck_incidents_trigger_requires_run`; reject wrong-run or wrong-subject trigger via composite FK.
-4. **Trigger association uniqueness and agreement:** reject two `TRIGGERING` rows for one incident using `uq_incident_anomaly_events_one_trigger_per_incident`; test application transaction rejects a trigger association whose event differs from the incident direct pointer (this equality needs app logic, not DDL).
-5. **Reset/worker race:** with two independent sessions and synchronization barriers, cover worker-locks-first and reset-locks-first orders; assert any write after reset commit using an old generation is rejected. Assert child snapshots from completed pre-reset work remain valid historically.
-6. **Idempotency:** duplicate each agreed start/ingest/detector/incident/verification/escalation/notification/timeline identity and assert unique conflict/replay behavior; keep key contracts owner-defined.
-7. **Restrictive deletion:** verify deleting referenced users, runs, incidents, anomalies, or readings is rejected where FKs are restrictive; prove reset does not cascade-delete unrelated rows.
-8. **Migration lifecycle:** on clean PostgreSQL 16, upgrade to head, verify expected constraints and index predicates, downgrade to base, verify removal, then upgrade a fresh database again.
-9. **Time behavior:** insert/read timezone-aware timestamps; verify stored instants preserve the same UTC instant across offsets and naive datetimes are rejected at application validation boundary. PostgreSQL `TIMESTAMPTZ` stores instants, not the original input timezone label.
+Implemented coverage includes:
 
-These tests are a plan only; no tests were authored or run for this document task.
+1. **Schema readiness:** required nine tables plus `alembic_version`; revision
+   matches expected head.
+2. **CHECKs:** supported demo scenario, positive heart rate and generation,
+   run/generation pair consistency, and trigger-requires-run.
+3. **Composite FKs:** same-subject/run integrity for readings, incident
+   triggers, and incident-anomaly evidence associations.
+4. **Trigger integrity:** reject a second `TRIGGERING` association for one
+   incident. Trigger-pointer and association equality remains an application
+   transaction responsibility.
+5. **Idempotency:** uniqueness for demo start, reading ingestion, anomaly
+   dedupe, incident creation, verification, escalation, and timeline events.
+6. **Restrictive deletion:** reject deletion of referenced users, runs,
+   incidents, or anomalies.
+
+Future test work includes reset/worker concurrency with two independent
+sessions, migration upgrade/downgrade lifecycle, and timezone round-trip
+behavior. Reset concurrency depends on Shubhankar's application transaction
+behavior and generation locking; it is not covered by the current 27 tests.
+
+Historical validation: an earlier local PostgreSQL test run, before the
+latest timeout and failed-transaction handling adjustments, reported 19 tests
+passed and was interrupted while waiting in the verification-idempotency test.
+That was not a full-suite pass and does not validate the current test
+implementation. This documentation update does not rerun PostgreSQL tests;
+record any later execution result separately.
 
 ## 9. Ownership and integration boundaries
 
@@ -510,9 +534,9 @@ These tests are a plan only; no tests were authored or run for this document tas
 | Vaishnavi | Dashboard, location and hospital integration contracts. | Defines displayed fields, location consent/freshness and response shape; confirms whether location/hospital persistence is needed. |
 | Aditya | Flutter client and demo scenario behavior. | Confirms scenario/run identity, reset/replay and client retry semantics; consumes backend-authoritative incident result. |
 
-No API, ORM model, engine/session module, migration, or runtime database behavior described above is currently implemented. Proposed fields and transaction contracts must not be represented as existing interfaces.
+The nine ORM models, shared metadata, Alembic environment, and initial migration are implemented. The migration has been applied to `sahyog_dev` and `sahyog_test` as reported for this closeout. No application engine/session module, runtime persistence operations, or application-level DML permission provisioning is implemented. Do not represent proposed API or lifecycle contracts as existing runtime interfaces.
 
-## 10. Open decisions before implementation
+## 10. Open decisions before runtime integration or schema extensions
 
 1. Exact persisted incident status vocabulary and allowed transitions.
 2. Incident reopening policy and whether a triggering anomaly can ever create another incident; this controls `uq_incidents_trigger_event`.
@@ -521,7 +545,7 @@ No API, ORM model, engine/session module, migration, or runtime database behavio
 5. Exact retention periods and deletion/anonymization rules for health, incident/timeline, contact, location, notification, and reset records; no indefinite health-data retention.
 6. Source-record ID uniqueness scope and whether the first prototype has a stable source ID.
 7. Idempotency key formats and request replay responses for every operation.
-8. Whether ordinary non-demo incidents are supported by the first schema. If not, narrow nullable incident/run fields before migration; if yes, define runless anomaly/evidence rules without nullable composite-FK gaps.
+8. Whether ordinary non-demo incidents will be supported by runtime behavior. The initial schema retains nullable incident/run fields but requires a run for a triggering anomaly; any schema change or runless anomaly/evidence support needs an approved follow-up design and migration before implementation.
 9. Identity/auth table contract, profile shape/cardinality, contact channel vocabulary, and authorization consent/revocation behavior.
 10. Canonical reading field names, timestamp semantics, supported source units/conversion policy, BPM bounds, and activity vocabulary.
 11. Detector result/severity/evidence vocabulary, `anomaly_readings` need, detector-version identity, and ordinary non-demo events.
@@ -531,4 +555,4 @@ No API, ORM model, engine/session module, migration, or runtime database behavio
 15. Incident timeline approval, event vocabulary, minimal details, idempotency semantics, append-only exceptions, and retention.
 16. UUID generation ownership, timestamp clock policy, and the actual Shubhankar engine/session/module integration point.
 
-**Readiness:** This physical specification is a proposed review artifact, not implementation authorization. Resolve owner decisions, then approve a model/migration task. No application code, models, migrations, tests, or configuration were created by this document.
+**Readiness:** This document is the approved physical schema baseline, and the initial schema implementation and 27 schema/constraint PostgreSQL integration test cases are in place. Remaining work includes Shubhankar's engine/session integration, runtime persistence and DML permission provisioning, PostgreSQL runtime validation, and future migration-lifecycle, timestamp, and concurrency tests. Unresolved decisions above continue to govern future extensions and application contracts.

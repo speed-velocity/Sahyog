@@ -20,13 +20,16 @@ dev = [
 ]
 
 [tool.uv]
-# The backend source/package structure has not been created yet.
+# The backend runs from the workspace and is not installed as a wheel.
 package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra"
+markers = [
+    "integration: requires the isolated PostgreSQL sahyog_test database",
+]
 
 [tool.ruff]
 target-version = "py312"

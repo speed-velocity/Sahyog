@@ -1,41 +1,43 @@
 # SAHYOG — Database Implementation Plan
 
-**Status:** Proposed execution and contract-freeze plan; no implementation authorization implied
+**Status:** Implementation plan updated for Phase 0A closeout; remaining work and unresolved contracts are identified below
 **Design baseline:** `docs/DATABASE_SCHEMA_DESIGN.md` and approved `docs/PHYSICAL_DATABASE_SCHEMA.md`
 **Owner:** Role 5 — Software Integration Lead + Database Engineer
 
-This plan converts the reviewed design into an implementation sequence. The physical document is the schema baseline. Recommendations below are explicitly recommendations; they do not silently settle owner decisions or claim that proposed tables/contracts already exist.
+This document preserves the original implementation plan and records progress against it. The physical document is the approved schema baseline. Recommendations remain recommendations and do not silently settle owner decisions or claim that proposed runtime contracts already exist.
 
 ## 1. Current repository readiness
 
 ### Confirmed repository facts
 
 - The current branch is `Software-integration-and-database`, tracking `origin/Software-integration-and-database`.
-- The tracked backend foundation includes `backend/pyproject.toml`, `backend/uv.lock`, and `backend/tests/test_project_metadata.py`. Nine SQLAlchemy ORM models have since been implemented in the working tree, with shared declarative metadata in `backend/app/db/base.py`. Engine/session integration, runtime persistence operations, and the Alembic environment/revisions remain unimplemented.
+- The original repository baseline contained `backend/pyproject.toml`, `backend/uv.lock`, and a project-metadata test. Since that historical baseline, nine SQLAlchemy ORM models and shared `Base.metadata` have been implemented in `backend/app/db/base.py` and `backend/app/models/`.
 - `backend/pyproject.toml` targets Python `>=3.12,<3.13` and declares FastAPI, Uvicorn, Pydantic Settings, SQLAlchemy `>=2.0,<2.1`, and `psycopg[binary]>=3.3,<3.4`; Alembic `>=1.20,<1.21` is in the `migrations` group; pytest and Ruff are in the `dev` group. The lockfile is present and contains the resolved baseline dependencies.
-- The only tracked backend test checks project metadata and dependency groups. It does not connect to PostgreSQL or test application behavior.
+- The current tests include project metadata checks and a static check of the Alembic transaction boundary. They do not connect to PostgreSQL or test runtime application behavior.
 - `.github/workflows/ci.yml` runs on pushes and pull requests using Ubuntu, Python 3.12, uv locked installation (including migrations/dev groups), Ruff lint, Ruff format check, and pytest. It has no PostgreSQL service and therefore does not exercise database migrations or constraints.
-- The logical and physical schema documents are present at `docs/DATABASE_SCHEMA_DESIGN.md` and `docs/PHYSICAL_DATABASE_SCHEMA.md`; this task preserves them unchanged.
+- The logical and physical schema documents are present at `docs/DATABASE_SCHEMA_DESIGN.md` and `docs/PHYSICAL_DATABASE_SCHEMA.md`; they record the approved schema design and current implementation status.
 
 ### Local database availability check
 
-During this inspection, `psql` was not found on PATH, no Windows service matching PostgreSQL was returned, no listener was detected on local port 5432, and Docker was not found on PATH. This is evidence that a conventional local PostgreSQL/Docker setup was not detected; it does **not** prove PostgreSQL is absent elsewhere or that no remote database is available. No connection string or database setting was present in the inspected environment-variable names. PostgreSQL 16 availability and access must be confirmed before database integration tests or migrations are attempted.
+At the original readiness inspection, `psql`, a local PostgreSQL service/listener, and Docker were not detected. That finding was limited to that environment inspection. For this closeout, it is reported that the initial migration has since been applied to both `sahyog_dev` and `sahyog_test`; no database was accessed during this documentation update.
 
 ### Readiness summary
 
 | Area | Status | Evidence / next requirement |
 |---|---|---|
 | Dependency baseline | Present | Manifest and lockfile declare the approved stack. No new package is needed for the proposed schema foundation. |
-| PostgreSQL 16 | Not verified available locally | No local `psql`, PostgreSQL service, port-5432 listener, or Docker command detected. Confirm a local/disposable PostgreSQL 16 instance or an approved isolated CI service. |
-| Alembic | Dependency present; not initialized | No `alembic.ini`, `migrations/env.py`, or revision files exist. |
+| PostgreSQL 16 | Migration access used (reported); current local service not rechecked | The initial revision is reported applied to `sahyog_dev` and `sahyog_test`. Confirm an isolated PostgreSQL 16 target for automated integration tests; this task did not inspect either database. |
+| Alembic | Implemented | `backend/alembic.ini`, `backend/migrations/env.py`, template, README, and one initial revision exist. The online migration transaction-boundary fix is present and covered by a static ordering test. |
 | SQLAlchemy engine/session | Not implemented | No bootstrap module or agreed import/settings path exists. Shubhankar owns this integration. |
-| Models and schema | ORM foundation implemented in the working tree | Nine ORM models and shared `Base.metadata` exist. Runtime persistence operations and Alembic migrations remain pending. |
-| Tests | Metadata-only | PostgreSQL integration tests remain to be designed and implemented after contracts and environment are available. |
-| CI database coverage | Not present | Add PostgreSQL service/configuration only when database-backed CI tests are introduced and the service contract is agreed. |
+| Models and schema | Implemented | Nine SQLAlchemy ORM models share `Base.metadata` and follow the approved physical schema. Runtime persistence operations remain pending. |
+| Initial migration | Generated and applied (reported) | The sole initial revision creates the nine application tables; it is reported applied to `sahyog_dev` and `sahyog_test`. Each database has ten tables including `alembic_version`, owned by `sahyog_migrator`. |
+| Database roles | Partially provisioned (reported) | `sahyog_app` has schema `USAGE` and no schema `CREATE`; application DML permissions remain pending. |
+| Tests | Schema/constraint integration tests implemented; runtime validation environment-dependent | 27 PostgreSQL integration cases cover schema readiness, CHECK/FK constraints, idempotency uniqueness, partial uniqueness, and restrictive deletes. PostgreSQL execution is distinct from implementation; concurrency and runtime behavior tests remain future work. |
+| CI database coverage | Not present | The workflow does not start PostgreSQL or run the implemented integration cases. Add an isolated PostgreSQL service and test-only settings when the CI service contract is agreed. |
 
 ## 2. MVP database scope
 
-Scope classifications are recommendations based on the physical design and the requirement to execute all three scenarios through one pipeline. They do not change the physical schema baseline. “Required” means required for the recommended database-backed first prototype, not already implemented.
+These classifications preserve the original recommendation for the database-backed first prototype and its three scenarios. The approved nine-table core is now implemented; implementation status is in Section 1. “Required” describes the workflow need and does not claim that runtime application behavior exists.
 
 | Logical table/candidate | Recommended classification | Reason and scenario/workflow impact |
 |---|---|---|
@@ -44,10 +46,10 @@ Scope classifications are recommendations based on the physical design and the r
 | `health_readings` | Required | Persists simulated BPM samples through the common pipeline. `NORMAL` stores readings without an anomaly; anomaly scenarios store the same canonical reading form. |
 | `anomaly_events` | Required for anomaly scenarios | Detector output is distinct from readings/incidents and is needed to create and explain anomaly-driven incidents. `NORMAL` must not produce an event. |
 | `incidents` | Required for `TRUE_ANOMALY` and `FALSE_ALARM` | Backend-authoritative lifecycle record. The false-alarm path resolves after an accepted safe response; the no-response path escalates after timeout. |
-| `incident_anomaly_events` | Recommended required evidence link for anomaly-created incidents | Preserves one triggering association plus supporting evidence and enforces one trigger-role row per incident. The direct incident trigger pointer remains. Owner must confirm association semantics before migration. |
+| `incident_anomaly_events` | Required evidence link for anomaly-created incidents in the initial schema | Preserves one triggering association plus supporting evidence and enforces one trigger-role row per incident. The direct incident trigger pointer remains. Shubhankar must confirm runtime association validation and any future changes. |
 | `verification_responses` | Required for the complete verification flow | Records person responses and supports idempotent safe confirmation. The no-response timeout and accepted response must be transactionally coordinated with incident state. |
 | `escalation_attempts` | Required for the complete no-response escalation flow | Separates the timeout-triggered escalation workflow from notification provider attempts. Must not be created for a safe response that cancels pending escalation. |
-| `incident_timeline_events` | Recommended required for first prototype lifecycle history | The logical design treats incident timeline as required and proposes an append-only event table. Confirm fields/event vocabulary and retention with Shubhankar before migration. |
+| `incident_timeline_events` | Required for the initial schema's durable lifecycle history | The logical design specifies an append-only event table. Confirm runtime event vocabulary and retention with Shubhankar before writing lifecycle events or changing the schema. |
 | `profiles` | Required only if profile workflow is delivered | The profile capability exists in project design, but shape and one-to-one storage choice are unresolved. Does not block scenario/incident persistence. |
 | `emergency_contacts` | Required only if contact registration/recipient selection is implemented | Needed to persist contact destinations for a notification workflow; registration is not caregiver authorization. Avoid retaining full destination data unless approved. |
 | `caregiver_authorizations` | Required only if caregiver access authorization is implemented | Needed to persist grants/revocations if the dashboard enforces caregiver-to-subject access. Keep grant and revocation history distinct from contact records. |
@@ -64,11 +66,11 @@ Scope classifications are recommendations based on the physical design and the r
 - **`TRUE_ANOMALY`:** run readings → detector event → incident with triggering evidence → verification pending → timeout processing → escalation attempt and, if adopted, notification attempt; timeline records approved lifecycle events.
 - **`FALSE_ALARM`:** same readings/detector/incident/verification path → accepted safe response → pending escalation cancelled → incident resolved; retries do not duplicate the response transition or timeline event.
 
-Optional tables above do not remove their logical concepts. If omitted from first persistence, the corresponding workflow must be out of initial prototype scope or represented by an owner-approved non-database service contract. Document the impact before migration.
+Optional tables above do not remove their logical concepts. Their workflows must remain out of initial persistence or use an owner-approved non-database contract. Document the impact before any future migration adds them.
 
 ## 3. Unresolved decisions and recommended defaults
 
-Recommendations below are not approvals. “Model blocker” means the entity shape or constraint set cannot be responsibly frozen; “migration blocker” means the physical DDL/index policy cannot be frozen; “future” means the first schema can proceed with the recommended boundary while the later capability remains out of scope.
+Recommendations below are not approvals. This table preserves the pre-implementation review: its “blocks” column describes the impact identified at that time. The physical baseline has since been approved and applied; unresolved decisions now govern runtime behavior and future schema changes unless a new approved design requires a migration.
 
 | # | Unresolved question and implementation impact | Recommended current-prototype default (not approved) | If chosen differently | Blocks |
 |---:|---|---|---|---|
@@ -89,11 +91,11 @@ Recommendations below are not approvals. “Model blocker” means the entity sh
 | 15 | Timeline approval, event vocabulary, minimal fields, key semantics, append-only exceptions, and retention. | Include the proposed append-only table for the first full incident history; keep `event_type` text, per-incident idempotency key, minimal details, and no update/delete during normal lifecycle. Shubhankar confirms event list and key. | Omitting or changing it alters timeline guarantees; detailed payloads increase privacy and migration cost. | Blocks timeline table migration/event writers; core incident state can be drafted. |
 | 16 | UUID generation owner, timestamp clock policy, and exact Shubhankar engine/session integration point. | Recommend application-generated UUIDs (no DB extension/default) and timezone-aware UTC instants; Shubhankar owns database URL/settings/engine/session and defines the import/module point that Role 5 consumes. | DB-generated IDs or another clock change mapping/defaults and integration tests; bootstrap path changes Alembic wiring. | ID/time decisions block model/migration conventions; actual session/bootstrap agreement blocks running Alembic and integration tests. |
 
-Additional environment blocker: confirm a clean, isolated PostgreSQL 16 database is available. The current environment checks did not verify one. Do not point migrations or tests at a shared, production, or unknown database.
+Historical environment blocker: earlier local checks did not detect PostgreSQL or Docker. The later migration application to development and test databases is reported in Section 1. Automated tests still require a verified isolated PostgreSQL 16 target; do not point tests at a shared, production, or unknown database.
 
 ## 4. Recommended initial schema scope and dependencies
 
-The following is the recommended first migration scope after resolving the stated blockers. It keeps the approved physical design's tables and constraints; optional tables are not silently deleted from the design.
+The following table records the original recommended first-migration scope. Its nine core tables are now implemented and applied as reported in Section 1. Optional tables remain outside that initial migration; their absence does not remove their logical concepts from the design.
 
 | Order | Table | Why/workflow | References | Essential physical guarantees | Must be confirmed before implementation |
 |---:|---|---|---|---|---|
@@ -113,9 +115,9 @@ Orders 5–6 require base anomaly and incident tables before association FKs. As
 
 ### Existing versus proposed structure
 
-**Existing:** the backend has a project manifest/lock and metadata test only. There are no application, `db`, `models`, or migrations directories; do not describe proposed paths as existing.
+**Historical baseline:** the backend originally had only a project manifest/lock and metadata test. The current repository includes the shared database base, nine ORM models, and Alembic environment/revision. Application engine/session integration and runtime persistence are still absent.
 
-**Proposed Role 5-owned paths, subject to team agreement:**
+**Current core paths and proposed extensions:**
 
 ```text
 backend/
@@ -128,12 +130,12 @@ backend/
     versions/               # reviewed Alembic revisions
   alembic.ini               # script location/logging; no committed secret URL
   tests/
-    integration/            # PostgreSQL-only schema, migration, and constraint tests
+    integration/            # proposed PostgreSQL schema, migration, and constraint tests
 ```
 
 An initial organization may split `models/` by bounded domain (identity, readings, incidents, operations) after model count warrants it; avoid one table per gratuitous module or parallel declarative Bases. A single `DeclarativeBase` and `MetaData` must carry all tables and naming convention. Import/registration must be explicit so Alembic autogenerate sees every approved model.
 
-**Shubhankar-owned integration (proposed path only; no such module exists):** the application settings/configuration and synchronous engine/session factory. Shubhankar selects the actual module path, connection-setting names, pool options, and transaction dependency. Role 5's Alembic environment and tests consume that agreed integration and must not create a competing engine/session factory or database URL convention.
+**Shubhankar-owned integration (not yet implemented):** application settings/configuration and the synchronous engine/session factory. Shubhankar selects the actual module path, application connection-setting names, pool options, and transaction dependency. Role 5's Alembic environment uses the separate `SAHYOG_MIGRATION_DATABASE_URL` contract and must not create a competing application engine/session factory.
 
 **Shared coordination:** `backend/pyproject.toml` and `backend/uv.lock` remain shared dependency files; no dependency change is needed for this plan. If runtime/test groups or CI need changes, coordinate with Shubhankar before modifying them. Role 5 owns model/migration/schema-test files; Shubhankar owns app settings and bootstrap; tests/CI wiring must agree on connection setup.
 
@@ -141,27 +143,27 @@ An initial organization may split `models/` by bounded domain (identity, reading
 
 - Use a SQLAlchemy URL with the approved Psycopg 3 synchronous dialect (`postgresql+psycopg`). Do not place credentials in source, the lockfile, workflow YAML, or Flutter/dashboard configuration.
 - **Recommended environment-variable convention, not yet agreed:** `DATABASE_URL` for the local/application database and a separate disposable-test URL such as `TEST_DATABASE_URL`. Shubhankar must approve names, parsing/secret loading, and whether tests override settings. No such names or variables are implemented or present in the inspected environment.
-- A future `.env.example` should wait for Shubhankar to freeze actual setting names and safe non-secret examples; never populate it with assumed credentials.
+- Application connection settings and their `.env.example` entries remain pending Shubhankar's contract. Alembic online commands separately require `SAHYOG_MIGRATION_DATABASE_URL`, supplied by the developer/deployment environment and not stored in `.env.example`.
 - The application session owns each request/work unit transaction. Generation validation and run-scoped writes must use one transaction and one `demo_runs` row lock; reset and workers serialize on that row. Database helpers may expose transaction/session integration but do not own incident lifecycle decisions.
-- Keep connection URL resolution in one settings/bootstrap path. Alembic and tests should reuse that approved resolution rather than duplicate parsing.
+- Shubhankar owns application URL resolution through the future settings/bootstrap path. Alembic's migration-only URL remains separate; PostgreSQL tests must use an isolated test connection approved for that purpose.
 
 ## 6. Implementation sequence
 
-Expected paths below are proposals, not existing files. The logical and physical design documents are inputs and must remain unchanged unless a separate documentation revision is authorized.
+The following sequence is retained from the original plan. Phases 4–8 (shared metadata, models, Alembic setup, initial revision review, and application to development/test databases) are reported complete. Remaining phases and unresolved contracts are marked by their current descriptions below.
 
 | Phase | Deliverable and acceptance criteria | Dependencies | Expected files | Owner |
 |---:|---|---|---|---|
 | 1. Contract freeze | Record owner decisions from Section 3; approve table inclusion, same-subject/run FK graph, incident trigger rule, idempotency scopes, statuses, and optional workflows. No field or constraint remains ambiguously owned for chosen tables. | This plan and both design docs. | Proposed update to `docs/DATABASE_IMPLEMENTATION_PLAN.md` only if decisions require it; approved shared contract/handoff location to be agreed. | Role 5 coordinates; Shubhankar, Prasiddh, Vaishnavi, Aditya approve their contracts. |
 | 2. PostgreSQL 16 availability | Confirm disposable development DB version/access and ability to create/drop an isolated test DB; no shared/production target. | Local install/approved service availability; credentials provisioned securely. | No repo file initially; later local-only settings as approved. | Role 5 with environment owner. |
 | 3. Engine/session agreement | Shubhankar supplies actual settings, URL, synchronous engine/session module and transaction lifecycle; confirm the import path for Alembic/tests. | Phase 1 identity/settings decisions and phase 2 DB access. | Shubhankar-owned application config/bootstrap files; exact paths selected by Shubhankar. | Shubhankar; Role 5 integrates. |
-| 4. Base/metadata | Create one declarative Base/MetaData with approved naming convention; prove model imports register metadata without creating a second engine. | Contract freeze; agreed package/import layout. | Proposed `backend/app/db/base.py`, `backend/app/models/__init__.py` (Role 5). | Role 5. |
-| 5. Approved models/constraints | Implement selected tables in dependency order; include composite FK targets, CHECKs, partial unique indexes, no unapproved status enums, and no unapproved optional tables. | Phases 1–4; each relevant owner contract confirmed. | Proposed `backend/app/models/*.py` (Role 5); bootstrap file only if Shubhankar owns/modifies it. | Role 5, with owner review. |
-| 6. Alembic initialization | Create environment, version directory, and safe config integration; `target_metadata` includes every approved model and reuses Shubhankar config. | Model metadata and engine/settings integration. | Proposed `backend/alembic.ini`, `backend/migrations/env.py`, `backend/migrations/versions/` (Role 5). | Role 5 + Shubhankar. |
-| 7. Initial migration review | Generate candidate revision, inspect every constraint/index name and predicate, manually correct if necessary; compare DDL to the approved physical spec. | Alembic initialized, schema frozen. | One initial file under `backend/migrations/versions/` (Role 5). | Role 5; each contract owner reviews owned fields. |
-| 8. Clean PostgreSQL migration | On disposable PostgreSQL 16, run upgrade to head, inspect schema, test downgrade to base, then upgrade a fresh database. | Phase 7 and confirmed PostgreSQL service. | No new files unless migration fixes are required. | Role 5. |
-| 9. PostgreSQL integration tests | Add isolated tests for composite FKs, trigger pointer/association validation, partial uniqueness, idempotency, restrictive deletes, timestamps, and Alembic upgrade/downgrade. | Phases 3, 5–8; disposable test DB URL. | Proposed `backend/tests/integration/`; fixtures/config only after Shubhankar agrees. | Role 5; Shubhankar owns app-level transaction test seams. |
-| 10. Reset concurrency/idempotency verification | Two-session races test worker-first and reset-first lock order; old generation cannot write after reset commit; retries do not duplicate persisted operations. | Application locking implementation and idempotency contracts. | Integration tests in `backend/tests/integration/`; app changes belong to Shubhankar, not Role 5. | Shubhankar implements transaction behavior; Role 5 verifies DB guarantees. |
-| 11. CI and handoff | Add isolated PostgreSQL 16 service and safe test settings only if integration tests require them; run locked Ruff/pytest and DB tests in CI; record owner handoffs/readiness. | Stable tests and CI-supported service configuration. | `.github/workflows/ci.yml` (Role 5, coordinated); individual handoff files owned by each teammate; shared `HandOff.md` remains Utkarsh-owned. | Role 5 coordinates; Shubhankar reviews integration. |
+| 4. Base/metadata — **IMPLEMENTED** | Shared `Base` and naming convention exist; all nine models register with its metadata without initializing a database connection. | Completed. | `backend/app/db/base.py`, `backend/app/models/__init__.py`. | Role 5. |
+| 5. Approved models/constraints — **IMPLEMENTED** | Nine core models and approved constraints/indexes exist; no optional models were added. | Completed against the physical baseline. | `backend/app/models/*.py`. | Role 5. |
+| 6. Alembic initialization — **IMPLEMENTED** | Environment imports shared metadata, uses a migration-only URL, verifies `sahyog_migrator`, and ends the verification transaction before Alembic's migration transaction. | Completed; application engine/session integration remains separate and pending. | `backend/alembic.ini`, `backend/migrations/`. | Role 5; Shubhankar owns runtime bootstrap. |
+| 7. Initial migration review — **IMPLEMENTED** | The single initial revision was reviewed against the physical specification and Ruff style corrections preserve its operations. | Completed. | `backend/migrations/versions/99e748e414e3_initial_database_schema.py`. | Role 5. |
+| 8. Development/test migration application — **APPLIED (reported)** | Initial migration is reported applied to `sahyog_dev` and `sahyog_test`; ten tables in each are owned by `sahyog_migrator`. No downgrade has been performed as part of this closeout. | Reported complete; not reverified by database access in this task. | No new files. | Role 5. |
+| 9. PostgreSQL schema/constraint integration tests — **IMPLEMENTED** | 27 tests cover revision/table presence, scenario and generation checks, BPM validation, same-subject/run composite FKs, incident trigger/evidence integrity, idempotency uniqueness, the one-triggering-evidence partial unique index, and restrictive deletes. They use the isolated test fixtures. | Test execution requires an available, migrated `sahyog_test`; implementation does not mean the full suite has passed. Timestamp behavior and migration lifecycle remain future work. | `backend/tests/conftest.py`, `backend/tests/test_postgresql_schema.py`, `backend/tests/test_database_url_validation.py`, root `pytest.ini`. | Role 5; Shubhankar owns app-level transaction test seams. |
+| 10. Reset concurrency/idempotency verification — **FUTURE** | Add two-session races for worker-first and reset-first lock order; verify stale generations cannot write after reset and retries do not duplicate persisted operations. The current 27 tests do not exercise concurrency. | Application locking implementation and idempotency contracts. | Future PostgreSQL tests under `backend/tests/`; app changes belong to Shubhankar, not Role 5. | Shubhankar implements transaction behavior; Role 5 verifies DB guarantees. |
+| 11. CI and handoff | Add an isolated PostgreSQL 16 service and safe test settings so CI can run the implemented integration cases; record owner handoffs/readiness. | Agreed CI service configuration and verified database test execution. | `.github/workflows/ci.yml` (Role 5, coordinated); individual handoff files owned by each teammate; shared `HandOff.md` remains Utkarsh-owned. | Role 5 coordinates; Shubhankar reviews integration. |
 
 ## 7. PostgreSQL development and testing strategy
 
@@ -180,7 +182,7 @@ Expected paths below are proposals, not existing files. The logical and physical
 
 ### CI implications
 
-- Existing CI does not start PostgreSQL and has only metadata-level pytest. Once tests require a database, add a PostgreSQL 16 service container with health checks, a test-only database/user/password supplied as job-local ephemeral values, and a test-only connection setting. Do not use developer, shared, production, or provider credentials.
+- Existing CI does not start PostgreSQL. The current pytest suite includes metadata checks and a static transaction-boundary check, but no PostgreSQL integration coverage. Once database-backed tests are added, use an isolated PostgreSQL 16 service with health checks and job-local test credentials; do not use developer, shared, production, or provider credentials.
 - Keep `uv sync --locked --group migrations --group dev`, Ruff checks, and pytest; add migration/integration commands only when real tests exist. Do not claim CI database readiness before the GitHub workflow runs successfully with the service.
 - If GitHub-hosted service containers are unavailable in the project environment, identify an approved isolated alternative rather than falling back to a shared DB.
 
@@ -215,7 +217,7 @@ These are proposed handoff specifications for review, not contracts already appr
 
 ## 9. Blockers and implementation authorization checklist
 
-### Must be approved before models
+### Historical pre-model gates (still relevant to runtime behavior and extensions)
 
 - Shubhankar's subject/user identity FK target and how it maps to auth identity.
 - First-schema scope for ordinary non-demo incidents and runless reading/anomaly paths; do not infer behavior from nullable columns.
@@ -225,14 +227,14 @@ These are proposed handoff specifications for review, not contracts already appr
 - Table inclusion for timeline, contact/authorization access workflows, notification attempt history, location snapshots, and hospital catalog.
 - UUID generation and timestamp ownership/import conventions sufficient to define `Base`, models, and FK targets.
 
-### Must be approved before migrations
+### Gates for future schema changes and runtime integration
 
-- Final selected tables/columns/nullability and every named PK/FK/unique/CHECK/index, including optional-table boundary.
-- Ordinary incident policy and composite-FK/trigger CHECK scope; incident trigger uniqueness/reopen behavior.
-- Idempotency uniqueness scopes; exact keys may remain opaque strings, but storage scope must be fixed.
-- PostgreSQL 16 connection target, migration URL resolution via Shubhankar bootstrap, and a clean disposable database.
-- Retention/deletion decision for any personal/health/location/contact fields included in the migration; exact schedule may be policy-managed, but no indefinite health retention.
-- Alembic metadata import registration and downgrade ordering.
+- The initial table/constraint/index set is implemented and applied as recorded in the physical schema document. Any change to that set requires an approved follow-up migration.
+- Ordinary incident policy, application lifecycle behavior, idempotency response semantics, and any change to incident trigger/reopen behavior remain unresolved.
+- Runtime database operations and DML grants require Shubhankar's engine/session and application permission integration; do not use the bootstrap or migration role for runtime work.
+- PostgreSQL integration tests require an isolated test target. Do not use shared or production databases.
+- Retention/deletion policy for personal/health/location/contact data remains unresolved; exact periods must be approved before enabling additional stored data, and health data must not be retained indefinitely.
+- The existing Alembic metadata registration and downgrade ordering are implemented; future revisions must preserve them and be reviewed before application.
 
 ### Can remain open for a later extension
 
@@ -245,18 +247,15 @@ These are proposed handoff specifications for review, not contracts already appr
 
 ### Role 5 can complete independently after the decisions above
 
-- Implement the shared declarative Base/MetaData and approved Role 5 model modules.
-- Create Alembic environment/revisions from the approved physical specification, review generated DDL, and test constraints against PostgreSQL 16.
-- Add PostgreSQL integration tests for database-enforced guarantees and coordinate CI service setup.
+- Extend PostgreSQL integration coverage for timestamps, migration lifecycle, and concurrency, and coordinate CI service setup.
 - Maintain schema/index names, migration ordering, database infrastructure notes, and teammate handoffs without changing app-owned lifecycle/configuration.
 
 ### Requires Shubhankar's actual integration
 
-- Engine/session creation and database URL/environment configuration.
-- Alembic settings resolution and model metadata import path.
+- Application settings, engine/session creation, and application database URL/environment configuration; the existing Alembic environment uses a separate migration URL.
 - Application transaction and reset/worker generation locking, authorization, trigger-association validation, lifecycle/state/idempotency responses.
 - Test fixtures that exercise application transaction behavior. Role 5 can supply DB test cases but cannot substitute for the app seam.
 
 ### Recommended next implementation task
 
-Run a short contract-freeze review with Shubhankar, Prasiddh, Vaishnavi, and Aditya using Sections 3 and 8, then confirm PostgreSQL 16 access and Shubhankar's engine/session integration point. Once the model/migration blockers are recorded as accepted decisions, authorize the first implementation task: create the shared Base/metadata and the core demo-run, reading, anomaly, incident, evidence, verification, escalation, and timeline models. Do not initialize Alembic or create a migration until the selected table/constraint list and database connection path are frozen.
+Coordinate with Shubhankar on the application engine/session integration and application connection settings, then implement runtime persistence and application DML grants against the existing schema. Add the remaining PostgreSQL migration-lifecycle, timestamp, and generation-reset concurrency tests, and update CI when a safe test service is agreed. Preserve the unresolved contracts in Section 3 for future runtime behavior and schema extensions; do not recreate the models or initial migration.
