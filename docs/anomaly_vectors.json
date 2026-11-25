@@ -1,0 +1,1088 @@
+{
+  "schema_version": "sahyog.anomaly_vectors.v1",
+  "status": "PROPOSED - expected outputs follow the proposed semantics in docs/thresholds.md and are not an approved medical, backend, or database contract",
+  "owner": "Prasiddh (Role 1 - AI/ML and health monitoring)",
+  "created": "2026-11-25",
+  "source_document": "docs/thresholds.md",
+  "scope": "Deterministic detector-level heart-rate vectors for normal, spike, drop, sustained, noisy, gap, out-of-order, invalid, insufficient-baseline, exact and near boundary, kind change, and baseline replacement behavior. No backend IDs, incident state, dashboard fields, or clinical claims.",
+  "units": {
+    "heart_rate": "bpm",
+    "time": "milliseconds relative to the start of the vector",
+    "duration": "milliseconds"
+  },
+  "configuration_rule": "Each vector uses the top-level detector_config merged with that vector's config_overrides. An empty config_overrides object means the top-level defaults are used unchanged. All values are PROPOSED demo parameters.",
+  "sample_expansion": {
+    "runs": "A vector may provide runs. Expand each run inclusively from from_ms to to_ms by step_ms. Feed expanded samples in ascending t_ms order.",
+    "samples": "A vector may provide explicit samples. Feed them strictly in the listed order. This is used when arrival order differs from timestamp order.",
+    "rule": "A vector uses either runs or samples, never both."
+  },
+  "baseline_replacement_rule": "A vector may provide baseline_replacements. Apply each replacement when the next sample to be fed has t_ms greater than or equal to before_t_ms, and before that sample is fed. A replacement closes any active episode without emitting, resets episode counters, and keeps the last accepted timestamp.",
+  "detector_config": {
+    "z_threshold": 3.0,
+    "std_floor_bpm": 2.0,
+    "min_abs_delta_bpm": 15.0,
+    "persistence_ms": 10000,
+    "min_consecutive_abnormal_samples": 5,
+    "max_gap_ms": 5000,
+    "normal_confirm_samples": 2,
+    "valid_bpm_min": 20,
+    "valid_bpm_max": 250,
+    "evidence_window_ms": 30000,
+    "max_evidence_samples": 60
+  },
+  "classification_rules": {
+    "effective_delta_bpm": "max(z_threshold * max(baseline_std_bpm, std_floor_bpm), min_abs_delta_bpm)",
+    "spike": "sample.heart_rate_bpm >= baseline_mean_bpm + effective_delta_bpm",
+    "drop": "sample.heart_rate_bpm <= baseline_mean_bpm - effective_delta_bpm",
+    "normal": "otherwise",
+    "boundary_semantics": "Thresholds are inclusive: equal to the upper threshold is a spike; equal to the lower threshold is a drop.",
+    "invalid_sample": "A sample outside valid_bpm_min..valid_bpm_max is rejected without changing classification state or the last accepted timestamp. Only diagnostic rejection counters change."
+  },
+  "episode_rules": {
+    "start": "A spike or drop sample with no active episode, or of a different kind than the active episode, starts a new episode.",
+    "persistence": "An event is emitted at the first sample where both min_consecutive_abnormal_samples and persistence_ms are satisfied for the current consecutive abnormal run.",
+    "one_event_per_episode": "At most one event is emitted per continuous same-kind episode.",
+    "normal_samples": "A normal sample resets the consecutive-abnormal count and the run start, so persistence must be re-established. An active episode closes after normal_confirm_samples consecutive normal samples.",
+    "gap": "A gap greater than max_gap_ms closes any active episode and resets normal-confirmation counters. The post-gap sample is accepted and may start a new episode.",
+    "out_of_order": "A sample whose t_ms is not later than the last accepted sample is rejected without changing classification state or the last accepted timestamp.",
+    "kind_change": "A change from spike to drop or drop to spike closes the current episode and starts a new episode.",
+    "no_baseline": "With no explicit baseline, samples are accepted but not classified and no events are emitted.",
+    "no_recovery_event": "Returning to normal does not emit an event.",
+    "baseline_replacement": "A valid baseline replacement closes any active episode without emitting and resets episode counters."
+  },
+  "vectors": [
+    {
+      "id": "normal_steady_30s",
+      "description": "Steady normal readings must never produce an event.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 30000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 31,
+          "last_accepted_t_ms": 30000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "normal_variation_30s",
+      "description": "Ordinary variation inside the thresholds is normal.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 5000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 68
+        },
+        {
+          "from_ms": 6000,
+          "to_ms": 11000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 76
+        },
+        {
+          "from_ms": 12000,
+          "to_ms": 17000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 70
+        },
+        {
+          "from_ms": 18000,
+          "to_ms": 23000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 82
+        },
+        {
+          "from_ms": 24000,
+          "to_ms": 30000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 74
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 31,
+          "last_accepted_t_ms": 30000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "single_sample_spike",
+      "description": "One noisy spike must not produce an event.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 14000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 15000,
+          "to_ms": 15000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 140
+        },
+        {
+          "from_ms": 16000,
+          "to_ms": 30000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 31,
+          "last_accepted_t_ms": 30000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "single_sample_drop",
+      "description": "One noisy drop must not produce an event.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 14000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 15000,
+          "to_ms": 15000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 45
+        },
+        {
+          "from_ms": 16000,
+          "to_ms": 30000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 31,
+          "last_accepted_t_ms": 30000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "noisy_normal",
+      "description": "Repeated noisy values inside the threshold band must not produce an event.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 5.0
+      },
+      "config_overrides": {},
+      "samples": [
+        {
+          "t_ms": 0,
+          "heart_rate_bpm": 62
+        },
+        {
+          "t_ms": 1000,
+          "heart_rate_bpm": 84
+        },
+        {
+          "t_ms": 2000,
+          "heart_rate_bpm": 65
+        },
+        {
+          "t_ms": 3000,
+          "heart_rate_bpm": 80
+        },
+        {
+          "t_ms": 4000,
+          "heart_rate_bpm": 70
+        },
+        {
+          "t_ms": 5000,
+          "heart_rate_bpm": 78
+        },
+        {
+          "t_ms": 6000,
+          "heart_rate_bpm": 68
+        },
+        {
+          "t_ms": 7000,
+          "heart_rate_bpm": 76
+        },
+        {
+          "t_ms": 8000,
+          "heart_rate_bpm": 64
+        },
+        {
+          "t_ms": 9000,
+          "heart_rate_bpm": 82
+        },
+        {
+          "t_ms": 10000,
+          "heart_rate_bpm": 62
+        },
+        {
+          "t_ms": 11000,
+          "heart_rate_bpm": 84
+        },
+        {
+          "t_ms": 12000,
+          "heart_rate_bpm": 65
+        },
+        {
+          "t_ms": 13000,
+          "heart_rate_bpm": 80
+        },
+        {
+          "t_ms": 14000,
+          "heart_rate_bpm": 70
+        },
+        {
+          "t_ms": 15000,
+          "heart_rate_bpm": 78
+        },
+        {
+          "t_ms": 16000,
+          "heart_rate_bpm": 68
+        },
+        {
+          "t_ms": 17000,
+          "heart_rate_bpm": 76
+        },
+        {
+          "t_ms": 18000,
+          "heart_rate_bpm": 64
+        },
+        {
+          "t_ms": 19000,
+          "heart_rate_bpm": 82
+        },
+        {
+          "t_ms": 20000,
+          "heart_rate_bpm": 72
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 21,
+          "last_accepted_t_ms": 20000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "sustained_spike",
+      "description": "A sustained spike emits exactly one event after persistence is satisfied.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 9000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 10000,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 120
+        },
+        {
+          "from_ms": 21000,
+          "to_ms": 30000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "events": [
+          {
+            "kind": "spike",
+            "started_at_ms": 10000,
+            "detected_at_ms": 20000,
+            "last_hr": 120,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 120
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 31,
+          "last_accepted_t_ms": 30000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "sustained_drop",
+      "description": "A sustained drop emits exactly one event after persistence is satisfied.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 9000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 10000,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 45
+        },
+        {
+          "from_ms": 21000,
+          "to_ms": 30000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "events": [
+          {
+            "kind": "drop",
+            "started_at_ms": 10000,
+            "detected_at_ms": 20000,
+            "last_hr": 45,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 45
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 31,
+          "last_accepted_t_ms": 30000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "return_to_normal_then_new_spike",
+      "description": "Normal confirmation closes a spike episode; a later sustained spike is a new episode and may emit a second event.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 9000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 10000,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "from_ms": 21000,
+          "to_ms": 30000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 31000,
+          "to_ms": 41000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 130
+        }
+      ],
+      "expected": {
+        "event_count": 2,
+        "events": [
+          {
+            "kind": "spike",
+            "started_at_ms": 10000,
+            "detected_at_ms": 20000,
+            "last_hr": 130,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 130
+          },
+          {
+            "kind": "spike",
+            "started_at_ms": 31000,
+            "detected_at_ms": 41000,
+            "last_hr": 130,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 130
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 42,
+          "last_accepted_t_ms": 41000,
+          "active_episode_kind": "spike",
+          "event_emitted_in_episode": true,
+          "consecutive_abnormal_samples": 11,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "return_to_normal_then_new_drop",
+      "description": "Normal confirmation closes a drop episode; a later sustained drop is a new episode and may emit a second event.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 9000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 10000,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 45
+        },
+        {
+          "from_ms": 21000,
+          "to_ms": 30000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 31000,
+          "to_ms": 41000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 45
+        }
+      ],
+      "expected": {
+        "event_count": 2,
+        "events": [
+          {
+            "kind": "drop",
+            "started_at_ms": 10000,
+            "detected_at_ms": 20000,
+            "last_hr": 45,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 45
+          },
+          {
+            "kind": "drop",
+            "started_at_ms": 31000,
+            "detected_at_ms": 41000,
+            "last_hr": 45,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 45
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 42,
+          "last_accepted_t_ms": 41000,
+          "active_episode_kind": "drop",
+          "event_emitted_in_episode": true,
+          "consecutive_abnormal_samples": 11,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "gap_breaks_episode",
+      "description": "A gap greater than max_gap_ms breaks persistence; only the post-gap sustained run emits an event.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 9000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 10000,
+          "to_ms": 14000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "from_ms": 25000,
+          "to_ms": 35000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 130
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "events": [
+          {
+            "kind": "spike",
+            "started_at_ms": 25000,
+            "detected_at_ms": 35000,
+            "last_hr": 130,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 130
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 26,
+          "last_accepted_t_ms": 35000,
+          "active_episode_kind": "spike",
+          "event_emitted_in_episode": true,
+          "consecutive_abnormal_samples": 11,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "out_of_order_sample_rejected",
+      "description": "An out-of-order sample is rejected, cannot contribute to persistence, and does not move the last accepted timestamp.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "samples": [
+        {
+          "t_ms": 0,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 2000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 3000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 4000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 5000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 6000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 7000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 8000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 9000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 10000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "t_ms": 20000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 15000,
+          "heart_rate_bpm": 110
+        },
+        {
+          "t_ms": 21000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 22000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 23000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 24000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 25000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 26000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 27000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 28000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 29000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "t_ms": 30000,
+          "heart_rate_bpm": 130
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "events": [
+          {
+            "kind": "spike",
+            "started_at_ms": 20000,
+            "detected_at_ms": 30000,
+            "last_hr": 130,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 130
+          }
+        ],
+        "rejected_sample_count": 1,
+        "final_state": {
+          "accepted_sample_count": 22,
+          "last_accepted_t_ms": 30000,
+          "active_episode_kind": "spike",
+          "event_emitted_in_episode": true,
+          "consecutive_abnormal_samples": 11,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "invalid_bpm_rejected",
+      "description": "Out-of-range bpm values are rejected without crashing or changing episode state.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 9000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 10000,
+          "to_ms": 10000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 300
+        },
+        {
+          "from_ms": 11000,
+          "to_ms": 11000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 0
+        },
+        {
+          "from_ms": 12000,
+          "to_ms": 22000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 2,
+        "final_state": {
+          "accepted_sample_count": 21,
+          "last_accepted_t_ms": 22000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "no_baseline_no_events",
+      "description": "Without an explicit baseline the detector must not invent one or emit events.",
+      "baseline_bpm": null,
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 19000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 130
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 20,
+          "last_accepted_t_ms": 19000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "threshold_lower_exact_boundary",
+      "description": "A value exactly equal to the lower threshold is a drop under the proposed inclusive rule.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 57
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "events": [
+          {
+            "kind": "drop",
+            "started_at_ms": 0,
+            "detected_at_ms": 10000,
+            "last_hr": 57,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 57
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 21,
+          "last_accepted_t_ms": 20000,
+          "active_episode_kind": "drop",
+          "event_emitted_in_episode": true,
+          "consecutive_abnormal_samples": 21,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "threshold_lower_just_above",
+      "description": "One bpm above the lower threshold is normal.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 58
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 21,
+          "last_accepted_t_ms": 20000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "threshold_upper_exact_boundary",
+      "description": "A value exactly equal to the upper threshold is a spike under the proposed inclusive rule.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 87
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "events": [
+          {
+            "kind": "spike",
+            "started_at_ms": 0,
+            "detected_at_ms": 10000,
+            "last_hr": 87,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 87
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 21,
+          "last_accepted_t_ms": 20000,
+          "active_episode_kind": "spike",
+          "event_emitted_in_episode": true,
+          "consecutive_abnormal_samples": 21,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "threshold_upper_just_below",
+      "description": "One bpm below the upper threshold is normal.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 86
+        }
+      ],
+      "expected": {
+        "event_count": 0,
+        "events": [],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 21,
+          "last_accepted_t_ms": 20000,
+          "active_episode_kind": null,
+          "event_emitted_in_episode": false,
+          "consecutive_abnormal_samples": 0,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "kind_change_starts_new_episode",
+      "description": "A spike episode followed directly by a drop is two episodes and may emit two events.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 9000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 10000,
+          "to_ms": 20000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "from_ms": 21000,
+          "to_ms": 31000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 45
+        }
+      ],
+      "expected": {
+        "event_count": 2,
+        "events": [
+          {
+            "kind": "spike",
+            "started_at_ms": 10000,
+            "detected_at_ms": 20000,
+            "last_hr": 130,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 130
+          },
+          {
+            "kind": "drop",
+            "started_at_ms": 21000,
+            "detected_at_ms": 31000,
+            "last_hr": 45,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 45
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 32,
+          "last_accepted_t_ms": 31000,
+          "active_episode_kind": "drop",
+          "event_emitted_in_episode": true,
+          "consecutive_abnormal_samples": 11,
+          "consecutive_normal_samples": 0
+        }
+      }
+    },
+    {
+      "id": "baseline_replacement_closes_episode",
+      "description": "Replacing the baseline during an active, not-yet-emitted episode closes it without an event; a later sustained abnormal run under the new baseline emits one event.",
+      "baseline_bpm": {
+        "mean": 72.0,
+        "std": 4.0
+      },
+      "baseline_replacements": [
+        {
+          "before_t_ms": 15000,
+          "mean": 120.0,
+          "std": 4.0
+        }
+      ],
+      "config_overrides": {},
+      "runs": [
+        {
+          "from_ms": 0,
+          "to_ms": 9000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 72
+        },
+        {
+          "from_ms": 10000,
+          "to_ms": 14000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "from_ms": 15000,
+          "to_ms": 25000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 130
+        },
+        {
+          "from_ms": 26000,
+          "to_ms": 36000,
+          "step_ms": 1000,
+          "heart_rate_bpm": 140
+        }
+      ],
+      "expected": {
+        "event_count": 1,
+        "events": [
+          {
+            "kind": "spike",
+            "started_at_ms": 26000,
+            "detected_at_ms": 36000,
+            "last_hr": 140,
+            "abnormal_duration_ms": 10000,
+            "abnormal_sample_count": 11,
+            "extreme_heart_rate_bpm": 140
+          }
+        ],
+        "rejected_sample_count": 0,
+        "final_state": {
+          "accepted_sample_count": 37,
+          "last_accepted_t_ms": 36000,
+          "active_episode_kind": "spike",
+          "event_emitted_in_episode": true,
+          "consecutive_abnormal_samples": 11,
+          "consecutive_normal_samples": 0
+        }
+      }
+    }
+  ]
+}
