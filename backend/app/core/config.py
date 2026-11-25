@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     auth_issuer: str = "sahyog-backend"
     access_token_expire_minutes: int = 30
     verification_timeout_seconds: int = 15
+    detector_baseline_mean_bpm: float = 72.0
+    detector_baseline_std_bpm: float = 4.0
+    detector_session_cache_size: int = 256
 
     model_config = SettingsConfigDict(
         env_file=".env",
