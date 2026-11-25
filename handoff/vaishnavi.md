@@ -15,6 +15,7 @@
 - Backend location service/API: `IMPLEMENTED`, `TESTED` (17 tests, ruff check/format clean).
 - Mobile core location module: `IMPLEMENTED`, `TESTED` in an isolated Dart harness (12 tests) plus `dart analyze`; Flutter/Android runtime integration remains untested.
 - Real backend/dashboard/mobile integration: `BLOCKED` on missing backend application code (`backend/app/main.py`, dashboard/incident APIs, auth) owned by Shubhankar.
+- PR #3 branch sync: `COMPLETE` — `origin/main` merged into `Dashboard-and-location` with no content conflicts; pushed as `d472fb9`.
 
 ## 3. Summary
 Implemented the complete caregiver dashboard, a bounded backend location service with a clearly labelled seeded hospital fallback, and a framework-independent mobile location module. The dashboard never creates incidents or fabricates state; it renders backend-authoritative data and explicitly labels simulation. The location API validates inputs, computes staleness, bounds memory, and exposes dashboard-compatible location and nearby-hospital responses. The mobile module handles permission/service failures, stale locations, and bounded reporting through interfaces that Aditya can wire into the Flutter app. Its pure-Dart logic was analyzed and exercised in an isolated harness, including a real local HTTP round trip.
@@ -152,6 +153,7 @@ python -m venv C:\Users\VAISHN~1\AppData\Local\Temp\opencode\sahyog-location-ven
 - `dart analyze mobile/lib/core/location`: **no issues**.
 - `dart format`: 4 files formatted; subsequent format check passed.
 - Isolated Dart harness: **12 tests passed** (permission outcomes, stale/invalid input rejection, source labelling, reporter payload, HTTP success, HTTP error envelope, parser validation).
+- Post-merge re-verification (`d472fb9`): dashboard `npm test` **19 passed**, typecheck passed, build passed; backend `pytest` **17 passed**, Ruff check/format passed; `dart analyze` clean and Dart harness **12 passed**.
 - Flutter widget/Android tests were **not run**; only the pure-Dart module was verified.
 
 ## 10. Build Results
@@ -180,7 +182,7 @@ python -m venv C:\Users\VAISHN~1\AppData\Local\Temp\opencode\sahyog-location-ven
 - **Utkarsh:** review and merge only after cross-component contracts are approved.
 
 ## 13. Next Actions
-1. Review and commit the owned implementation on `Dashboard-and-location` when explicitly approved.
+1. Implementation is committed at `c3afb24` and synced with `main` at `d472fb9`; keep the branch updated from `main` before integration.
 2. Align dashboard types with Shubhankar's final response schemas and integrate against a running backend.
 3. Replace the seeded hospital provider boundary with Utkarsh's approved abstraction.
 4. Wire Aditya's Flutter permission provider to `mobile/lib/core/location/`, move the verified harness cases into `mobile/test/core/location/`, and run Flutter analysis/widget tests.
@@ -224,7 +226,21 @@ python -m venv C:\Users\VAISHN~1\AppData\Local\Temp\opencode\sahyog-location-ven
 - Generated `__pycache__`, `.pytest_cache`, and `.ruff_cache` directories were removed after testing.
 
 ## 19. Commit
-- Commit ID: **not created** (no commit was requested in this session).
-- Branch remains `Dashboard-and-location`.
-- Uncommitted docs intentionally excluded from any future commit: `Agents.md`, `HandOff.md`, `PRD.md`, `SYSTEM_DESIGN.md`, `TEAM.md`.
-- Ready for Utkarsh/Shubhankar review before commit or integration.
+- Implementation commit: `c3afb2407eb3d0d6f8fab0a987200d923582c80f` — `feat: complete dashboard and location modules`.
+- Merge commit: `d472fb93da9a79525644dd5d8df1acb73b228ec1` — `merge: integrate main into dashboard and location for PR #3`.
+- Pre-merge backup branch: `backup/dashboard-location-before-pr3-conflict-resolution` at `c3afb24` (retained).
+- Branch remains `Dashboard-and-location`; upstream `origin/Dashboard-and-location` now at `d472fb9`.
+- Shared docs (`Agents.md`, `HandOff.md`, `PRD.md`, `SYSTEM_DESIGN.md`, `TEAM.md`) are now tracked because they were added by `origin/main`; their content was not modified.
+
+## 20. PR #3 — Merge Conflict Resolution
+- Date: 2026-11-25.
+- Base `main`: `19d84d8`; pre-merge head: `c3afb24`; merge result: `d472fb9`.
+- Conflict audit: **no content conflicts**. The only overlapping path was deletion of the old PDF on both branches. `origin/main` added five shared documentation files whose local untracked copies were byte-identical (verified by Git blob hash before and after).
+- Resolution: merged `origin/main` into `Dashboard-and-location` with `--no-ff`; no manual file edits or conflict-marker resolution were required.
+- Merge tree: `f32a808068ca3ce6b706f017cdff3627ba23c40d`; matches the pre-merge `git merge-tree` preview exactly.
+- Preserved from `main`: all five shared documents, unchanged from `origin/main` (`Agents.md` `d4f9eb5`, `HandOff.md` `26d92e9`, `PRD.md` `2dc83c6`, `SYSTEM_DESIGN.md` `e5b069b`, `TEAM.md` `439e7e2`).
+- Preserved from `Dashboard-and-location`: all 64 Role 2 files (dashboard, backend location API/service/tests, mobile location module, handoff).
+- Post-merge checks: dashboard `npm test` 19 passed, typecheck passed, build passed; backend `pytest` 17 passed, Ruff check/format passed; Dart analyze clean, harness 12 passed.
+- Push: `c3afb24..d472fb9 Dashboard-and-location -> Dashboard-and-location`; local HEAD and `origin/Dashboard-and-location` both verified at `d472fb9`.
+- GitHub CLI (`gh`) is not installed, so PR #3 mergeability was not queried via API. The local merge is clean and the remote branch contains `main`; GitHub should recompute mergeability after this push.
+- Remaining blockers are unchanged: backend `main.py`, dashboard/incident APIs and auth (Shubhankar); shared hospital abstraction and integration (Utkarsh); Flutter permission/provider wiring (Aditya).
