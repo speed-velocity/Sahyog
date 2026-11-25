@@ -143,9 +143,7 @@ class SessionTests(unittest.TestCase):
         first = detector.detect(batch([(index * 1000, 130) for index in range(5)]))
         self.assertIsNone(first.anomaly_kind)
 
-        second = detector.detect(
-            batch([(index * 1000, 130) for index in range(5, 11)])
-        )
+        second = detector.detect(batch([(index * 1000, 130) for index in range(5, 11)]))
         self.assertEqual(second.anomaly_kind, "spike")
         self.assertEqual(second.window_start, BASE_TS)
         self.assertEqual(second.detected_at, BASE_TS + timedelta(seconds=10))
@@ -229,16 +227,14 @@ class EvidenceTests(unittest.TestCase):
             max_evidence_samples=60,
         )
         detector = BackendDetector(72.0, 4.0, config)
-        result = detector.detect(
-            batch([(index * 1000, 130) for index in range(40)])
-        )
+        result = detector.detect(batch([(index * 1000, 130) for index in range(40)]))
         self.assertEqual(len(result.evidence), BACKEND_EVIDENCE_LIMIT)
         self.assertEqual(
             result.evidence[-1],
             {
-                "observed_at": (BASE_TS + timedelta(seconds=32)).isoformat(
-                    timespec="microseconds"
-                ).replace("+00:00", "Z"),
+                "observed_at": (BASE_TS + timedelta(seconds=32))
+                .isoformat(timespec="microseconds")
+                .replace("+00:00", "Z"),
                 "heart_rate_bpm": 130,
             },
         )

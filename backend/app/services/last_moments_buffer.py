@@ -132,9 +132,7 @@ class LastMomentsBuffer:
         if end < start:
             raise ValueError("end must not be earlier than start")
         return tuple(
-            sample
-            for sample in self._samples
-            if start <= sample.observed_at <= end
+            sample for sample in self._samples if start <= sample.observed_at <= end
         )
 
     def snapshot(self) -> BufferEvidence:
