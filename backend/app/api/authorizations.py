@@ -1,0 +1,66 @@
+"""Subject-controlled caregiver authorization routes."""
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from backend.app.core.auth import require_active_principal
+from backend.app.db.session import get_db
+from backend.app.schemas.auth import AuthenticatedPrincipal, UserRole
+from backend.app.schemas.authorization import (
+    AuthorizationCreateRequest,
+    AuthorizationResponse,
+)
+from backend.app.services.authorization import (
+    AuthorizationServiceError,
+    grant_caregiver_access,
+    revoke_caregiver_access,
+)
+
+router = APIRouter(prefix="/authorizations", tags=["authorizations"])
+
+
+def _require_subject(principal: AuthenticatedPrincipal) -> None:
+    if principal.role is not UserRole.SUBJECT:
+        raise HTTPException(status_code=403, detail="Only subjects may manage access")
+
+
+@router.post("", response_model=AuthorizationResponse, status_code=201)
+def grant_access(
+    request: AuthorizationCreateRequest,
+    principal: AuthenticatedPrincipal = Depends(require_active_principal),
+    session: Session = Depends(get_db),
+) -> AuthorizationResponse:
+    _require_subject(principal)
+    try:
+        authorization = grant_caregiver_access(
+            session,
+            subject_user_id=principal.user_id,
+            caregiver_user_id=request.caregiver_user_id,
+        )
+        session.commit()
+    except AuthorizationServiceError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return AuthorizationResponse.model_validate(authorization)
+
+
+@router.delete("/{authorization_id}", response_model=AuthorizationResponse)
+def revoke_access(
+    authorization_id: UUID,
+    principal: AuthenticatedPrincipal = Depends(require_active_principal),
+    session: Session = Depends(get_db),
+) -> AuthorizationResponse:
+    _require_subject(principal)
+    try:
+        authorization = revoke_caregiver_access(
+            session,
+            subject_user_id=principal.user_id,
+            authorization_id=authorization_id,
+        )
+        session.commit()
+    except AuthorizationServiceError as exc:
+        session.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AuthorizationResponse.model_validate(authorization)
