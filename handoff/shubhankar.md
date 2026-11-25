@@ -44,10 +44,13 @@ Last updated: 2026-11-25
 - `backend/app/api/dashboard.py`, `backend/app/schemas/dashboard.py`: bounded backend-authoritative dashboard overview.
 - `backend/.env.example`: safe placeholders for application, migration, test, auth, and demo-timeout configuration.
 - `backend/app/models/`: imported Utkarsh's database foundation from commit `4df7d3b`.
+- `backend/app/services/anomaly.py`, `backend/app/services/anomaly_integration.py`, `backend/app/services/detector_backend_contract.py`: integrated Prasiddh's published authoritative detector facade from `f496da0`.
+- `backend/app/services/detector_provider.py`: bounded, locked detector-session cache keyed by subject/run/generation with configurable baseline.
+- `backend/tests/test_detector_provider.py`: detector session isolation and anomaly-emission test.
 
 ## Interfaces
 - Consumed: Utkarsh's SQLAlchemy models, Alembic migration infrastructure, migration role separation, and Python/uv dependency baseline.
-- Exposed: `GET /health`; application settings and `get_db` dependency; incident lifecycle vocabulary and notifier protocol.
+- Exposed: `GET /health`; application settings and `get_db` dependency; incident lifecycle vocabulary and notifier protocol; detector-backed `POST /api/v1/readings`.
 - Changed: Adopted Utkarsh's proposed initial incident statuses and `I_AM_OK` response for backend domain validation.
 
 ## Tests
@@ -76,21 +79,27 @@ Last updated: 2026-11-25
 - Result: Passed; head is `2f4d5b1a8c77`.
 - Command: disposable SQLite smoke test for incident creation and timeout intent
 - Result: Passed; produced `ESCALATION_IN_PROGRESS` with one `PENDING` escalation attempt.
+- Command: `uv run ruff check app tests; uv run ruff format --check app tests; uv run python -m compileall -q app`
+- Result: Passed.
+- Command: focused backend suite including auth, authorization, lifecycle, worker, health, infrastructure, escalation, metadata, and detector provider tests
+- Result: Passed, 14 tests.
+- Command: Prasiddh published detector integration and backend-contract tests
+- Result: Passed, 34 tests and 4 subtests.
 
 ## Commits
 - Commit ID: None; workspace is not currently a Git checkout.
 - Summary: Changes are uncommitted in the shared workspace.
 
 ## Blockers
-- Issue: Exact incident/detector/verification vocabularies and migrations remain unresolved in the integration branch.
-- Required decision/owner: Prasiddh and Utkarsh must confirm shared vocabulary and migration readiness.
+- Issue: PostgreSQL service/credentials are not configured in this workspace, so live database integration tests remain unexecuted.
+- Required decision/owner: Utkarsh must provide the isolated `SAHYOG_TEST_DATABASE_URL` and confirm the auth migration is applied.
 - Issue: Local PostgreSQL credentials/service are not configured in this workspace.
 - Required decision/owner: Provide isolated `sahyog_dev`/`sahyog_test` URLs when running database integration tests; never use migration credentials for FastAPI.
 - Issue: The new auth migration must be applied to `sahyog_dev` and `sahyog_test` before live auth-route/database tests.
 - Required decision/owner: Run the forward Alembic migration with `SAHYOG_MIGRATION_DATABASE_URL`; do not use application credentials for migration.
-- Issue: Prasiddh's detector branch contains no implementation; `/api/v1/readings` requires a registered detector provider and returns `503` until the adapter is wired.
-- Required decision/owner: Integrate the published detector implementation into `get_detector()`; no competing detector was added.
+- Issue: The detector facade is integrated from the published source, but end-to-end API testing still depends on a live PostgreSQL database and authenticated demo user.
+- Required decision/owner: Run the migration and API scenario tests in the shared integration environment.
 
 ## Next Steps
-- Task: Freeze request/response schemas with Prasiddh and Utkarsh.
-- Dependency: Detector contract, incident lifecycle vocabulary, migrations, and notifier interface.
+- Task: Push the integrated backend changes to the backend branch and run PostgreSQL scenario tests.
+- Dependency: `SAHYOG_TEST_DATABASE_URL`, `SAHYOG_DATABASE_URL`, and migration application by Utkarsh.
