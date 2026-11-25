@@ -66,9 +66,7 @@ class DetectorReadingTests(unittest.TestCase):
 
     def test_naive_hr_sample_conversion_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            DetectorReading.from_hr_sample(
-                HrSample(datetime(2026, 1, 1), 72)
-            )
+            DetectorReading.from_hr_sample(HrSample(datetime(2026, 1, 1), 72))
 
 
 class DetectorSessionTests(unittest.TestCase):
@@ -130,13 +128,9 @@ class DetectorSessionTests(unittest.TestCase):
         self.assertEqual(len(result.anomalies), 2)
         first, second = result.anomalies
         self.assertEqual(first.event.started_at, BASE_TS)
-        self.assertEqual(
-            first.evidence.detected_at, BASE_TS + timedelta(seconds=10)
-        )
+        self.assertEqual(first.evidence.detected_at, BASE_TS + timedelta(seconds=10))
         self.assertEqual(second.event.started_at, BASE_TS + timedelta(seconds=13))
-        self.assertEqual(
-            second.evidence.detected_at, BASE_TS + timedelta(seconds=23)
-        )
+        self.assertEqual(second.evidence.detected_at, BASE_TS + timedelta(seconds=23))
         self.assertNotEqual(first.evidence.samples, second.evidence.samples)
 
     def test_state_persists_across_calls(self) -> None:
@@ -145,13 +139,9 @@ class DetectorSessionTests(unittest.TestCase):
         self.assertFalse(first.has_anomaly)
         self.assertEqual(first.accepted_readings, 5)
 
-        second = session.detect(
-            batch([(index * 1000, 130) for index in range(5, 11)])
-        )
+        second = session.detect(batch([(index * 1000, 130) for index in range(5, 11)]))
         self.assertEqual(len(second.anomalies), 1)
-        self.assertEqual(
-            second.anomalies[0].event.started_at, BASE_TS
-        )
+        self.assertEqual(second.anomalies[0].event.started_at, BASE_TS)
         self.assertEqual(
             second.anomalies[0].evidence.detected_at,
             BASE_TS + timedelta(seconds=10),
@@ -186,9 +176,7 @@ class DetectorSessionTests(unittest.TestCase):
             AnomalyDetectorSession(72.0, -1.0)
 
     def test_detector_version_is_carried_into_events(self) -> None:
-        session = AnomalyDetectorSession(
-            72.0, 4.0, detector_version="contract-test-v1"
-        )
+        session = AnomalyDetectorSession(72.0, 4.0, detector_version="contract-test-v1")
         result = session.detect(batch([(index * 1000, 130) for index in range(11)]))
         self.assertEqual(result.anomalies[0].detector_version, "contract-test-v1")
 

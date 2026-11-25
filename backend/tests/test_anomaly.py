@@ -82,7 +82,9 @@ def expand_vector(vector: dict) -> list[tuple[int, int]]:
                 t_ms += step
         return samples
     if "samples" in vector:
-        return [(sample["t_ms"], sample["heart_rate_bpm"]) for sample in vector["samples"]]
+        return [
+            (sample["t_ms"], sample["heart_rate_bpm"]) for sample in vector["samples"]
+        ]
     raise ValueError(f"{vector['id']} defines neither runs nor samples")
 
 
@@ -153,9 +155,7 @@ class SharedVectorTests(unittest.TestCase):
                         and t_ms >= replacements[replacement_index]["before_t_ms"]
                     ):
                         replacement = replacements[replacement_index]
-                        detector.set_baseline(
-                            replacement["mean"], replacement["std"]
-                        )
+                        detector.set_baseline(replacement["mean"], replacement["std"])
                         replacement_index += 1
 
                     event = detector.feed(HrSample(ms_to_dt(t_ms), hr))
@@ -166,9 +166,7 @@ class SharedVectorTests(unittest.TestCase):
 
                 self.assertEqual(replacement_index, len(replacements))
                 expected = vector["expected"]
-                self.assertEqual(
-                    len(produced), expected["event_count"], vector["id"]
-                )
+                self.assertEqual(len(produced), expected["event_count"], vector["id"])
 
                 for (event, evidence), expected_event in zip(
                     produced, expected["events"]
@@ -484,9 +482,7 @@ class SampleValidationTests(unittest.TestCase):
         detector.feed(HrSample(naive_start + timedelta(seconds=1), 72))
         snapshot = detector.snapshot()
         self.assertEqual(snapshot.accepted_sample_count, 2)
-        self.assertEqual(
-            snapshot.last_accepted_ts, naive_start + timedelta(seconds=1)
-        )
+        self.assertEqual(snapshot.last_accepted_ts, naive_start + timedelta(seconds=1))
 
     def test_equal_and_out_of_order_samples_are_rejected(self) -> None:
         detector = make_detector()
@@ -514,9 +510,7 @@ class SampleValidationTests(unittest.TestCase):
         self.assertEqual(
             after.consecutive_normal_samples, before.consecutive_normal_samples
         )
-        self.assertEqual(
-            after.episode_event_emitted, before.episode_event_emitted
-        )
+        self.assertEqual(after.episode_event_emitted, before.episode_event_emitted)
         self.assertEqual(after.rejected_sample_count, 1)
 
         detector.feed(HrSample(ms_to_dt(2000), 300))
@@ -546,17 +540,11 @@ class PersistenceTests(unittest.TestCase):
             persistence_ms=10000, min_consecutive_abnormal_samples=3
         )
         detector = make_detector(config=config)
-        self.assertEqual(
-            feed(detector, [(0, 130), (1000, 130), (2000, 130)]), []
-        )
-        events = feed(
-            detector, [(5000, 130), (8000, 130), (10000, 130)]
-        )
+        self.assertEqual(feed(detector, [(0, 130), (1000, 130), (2000, 130)]), [])
+        events = feed(detector, [(5000, 130), (8000, 130), (10000, 130)])
         self.assertEqual(len(events), 1)
         self.assertEqual(dt_to_ms(events[0].started_at), 0)
-        self.assertEqual(
-            dt_to_ms(detector.last_event_evidence.detected_at), 10000
-        )
+        self.assertEqual(dt_to_ms(detector.last_event_evidence.detected_at), 10000)
 
     def test_event_waits_for_minimum_count_after_duration(self) -> None:
         config = DetectorConfig(
@@ -565,25 +553,17 @@ class PersistenceTests(unittest.TestCase):
         detector = make_detector(config=config)
         events = feed(detector, [(index * 2000, 130) for index in range(6)])
         self.assertEqual(events, [])
-        events = feed(
-            detector, [(index * 2000, 130) for index in range(6, 10)]
-        )
+        events = feed(detector, [(index * 2000, 130) for index in range(6, 10)])
         self.assertEqual(len(events), 1)
         self.assertEqual(dt_to_ms(events[0].started_at), 0)
-        self.assertEqual(
-            dt_to_ms(detector.last_event_evidence.detected_at), 18000
-        )
-        self.assertEqual(
-            detector.last_event_evidence.abnormal_sample_count, 10
-        )
+        self.assertEqual(dt_to_ms(detector.last_event_evidence.detected_at), 18000)
+        self.assertEqual(detector.last_event_evidence.abnormal_sample_count, 10)
 
     def test_normal_sample_restarts_persistence_run(self) -> None:
         detector = make_detector()
         events = feed(detector, [(index * 1000, 130) for index in range(5)])
         self.assertEqual(events, [])
-        self.assertEqual(
-            detector.snapshot().consecutive_abnormal_samples, 5
-        )
+        self.assertEqual(detector.snapshot().consecutive_abnormal_samples, 5)
         events = feed(detector, [(5000, 72)])
         self.assertEqual(events, [])
         snapshot = detector.snapshot()
@@ -591,33 +571,23 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(snapshot.consecutive_abnormal_samples, 0)
         self.assertEqual(snapshot.consecutive_normal_samples, 1)
 
-        events = feed(
-            detector, [(t_ms, 130) for t_ms in range(6000, 17000, 1000)]
-        )
+        events = feed(detector, [(t_ms, 130) for t_ms in range(6000, 17000, 1000)])
         self.assertEqual(len(events), 1)
         self.assertEqual(dt_to_ms(events[0].started_at), 6000)
-        self.assertEqual(
-            dt_to_ms(detector.last_event_evidence.detected_at), 16000
-        )
+        self.assertEqual(dt_to_ms(detector.last_event_evidence.detected_at), 16000)
         self.assertEqual(len(events), 1)
 
     def test_only_one_event_per_episode(self) -> None:
         detector = make_detector()
-        events = feed(
-            detector, [(index * 1000, 130) for index in range(31)]
-        )
+        events = feed(detector, [(index * 1000, 130) for index in range(31)])
         self.assertEqual(len(events), 1)
         self.assertEqual(dt_to_ms(events[0].started_at), 0)
         self.assertTrue(detector.snapshot().episode_event_emitted)
-        self.assertEqual(
-            detector.snapshot().consecutive_abnormal_samples, 31
-        )
+        self.assertEqual(detector.snapshot().consecutive_abnormal_samples, 31)
 
     def test_normal_confirmation_closes_episode(self) -> None:
         detector = make_detector()
-        events = feed(
-            detector, [(index * 1000, 130) for index in range(11)]
-        )
+        events = feed(detector, [(index * 1000, 130) for index in range(11)])
         self.assertEqual(len(events), 1)
         feed(detector, [(11000, 72)])
         snapshot = detector.snapshot()
@@ -633,46 +603,39 @@ class PersistenceTests(unittest.TestCase):
         detector = make_detector(config=config)
         events = feed(
             detector,
-            [(0, 130), (1000, 130), (2000, 130), (3000, 130), (4000, 130),
-             (9000, 130), (10000, 130)],
+            [
+                (0, 130),
+                (1000, 130),
+                (2000, 130),
+                (3000, 130),
+                (4000, 130),
+                (9000, 130),
+                (10000, 130),
+            ],
         )
         self.assertEqual(len(events), 1)
         self.assertEqual(dt_to_ms(events[0].started_at), 0)
-        self.assertEqual(
-            detector.last_event_evidence.abnormal_sample_count, 7
-        )
+        self.assertEqual(detector.last_event_evidence.abnormal_sample_count, 7)
 
     def test_gap_greater_than_max_gap_breaks_run(self) -> None:
         config = DetectorConfig(max_gap_ms=5000)
         detector = make_detector(config=config)
-        events = feed(
-            detector, [(index * 1000, 130) for index in range(5)]
-        )
+        events = feed(detector, [(index * 1000, 130) for index in range(5)])
         self.assertEqual(events, [])
-        events = feed(
-            detector, [(index * 1000, 130) for index in range(10, 21)]
-        )
+        events = feed(detector, [(index * 1000, 130) for index in range(10, 21)])
         self.assertEqual(len(events), 1)
         self.assertEqual(dt_to_ms(events[0].started_at), 10000)
-        self.assertEqual(
-            dt_to_ms(detector.last_event_evidence.detected_at), 20000
-        )
+        self.assertEqual(dt_to_ms(detector.last_event_evidence.detected_at), 20000)
 
     def test_kind_change_starts_new_episode(self) -> None:
         detector = make_detector()
-        events = feed(
-            detector, [(index * 1000, 130) for index in range(5)]
-        )
+        events = feed(detector, [(index * 1000, 130) for index in range(5)])
         self.assertEqual(events, [])
-        events = feed(
-            detector, [(index * 1000, 45) for index in range(5, 16)]
-        )
+        events = feed(detector, [(index * 1000, 45) for index in range(5, 16)])
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].kind, "drop")
         self.assertEqual(dt_to_ms(events[0].started_at), 5000)
-        self.assertEqual(
-            dt_to_ms(detector.last_event_evidence.detected_at), 15000
-        )
+        self.assertEqual(dt_to_ms(detector.last_event_evidence.detected_at), 15000)
 
     def test_event_last_hr_is_the_completing_sample(self) -> None:
         detector = make_detector()
@@ -718,9 +681,7 @@ class EvidenceAndResetTests(unittest.TestCase):
     def test_evidence_is_bounded_by_max_samples(self) -> None:
         config = DetectorConfig(max_evidence_samples=5)
         detector = make_detector(config=config)
-        events = feed(
-            detector, [(index * 1000, 130) for index in range(11)]
-        )
+        events = feed(detector, [(index * 1000, 130) for index in range(11)])
         self.assertEqual(len(events), 1)
         evidence = detector.last_event_evidence
         self.assertEqual(len(evidence.samples), 5)
@@ -730,9 +691,7 @@ class EvidenceAndResetTests(unittest.TestCase):
     def test_evidence_window_prunes_old_samples(self) -> None:
         config = DetectorConfig(evidence_window_ms=3000)
         detector = make_detector(config=config)
-        events = feed(
-            detector, [(index * 1000, 130) for index in range(11)]
-        )
+        events = feed(detector, [(index * 1000, 130) for index in range(11)])
         self.assertEqual(len(events), 1)
         evidence = detector.last_event_evidence
         self.assertEqual(evidence.samples[0][0], ms_to_dt(7000))

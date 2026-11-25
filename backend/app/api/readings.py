@@ -4,15 +4,18 @@ from datetime import UTC, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.core.auth import require_active_principal
 from backend.app.core.clock import utc_now
 from backend.app.core.config import get_settings
 from backend.app.db.session import get_db
+from backend.app.models.demo import DemoRun
 from backend.app.schemas.auth import AuthenticatedPrincipal
 from backend.app.schemas.readings import ReadingRequest, ReadingResponse
 from backend.app.services.detector_adapter import Detector, DetectorReading
+from backend.app.services.detector_provider import get_detector_provider
 from backend.app.services.incident_service import create_incident_for_anomaly
 from backend.app.services.reading_service import (
     DetectorUnavailable,
@@ -22,10 +25,23 @@ from backend.app.services.reading_service import (
 router = APIRouter(prefix="/readings", tags=["readings"])
 
 
-def get_detector() -> Detector:
-    raise HTTPException(
-        status_code=503,
-        detail="authoritative detector provider is not configured",
+def get_detector(
+    request: ReadingRequest,
+    principal: AuthenticatedPrincipal = Depends(require_active_principal),
+    session: Session = Depends(get_db),
+) -> Detector:
+    run = session.scalar(
+        select(DemoRun).where(
+            DemoRun.demo_run_id == request.demo_run_id,
+            DemoRun.subject_user_id == principal.user_id,
+        )
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail="demo run was not found")
+    return get_detector_provider().get(
+        subject_user_id=principal.user_id,
+        demo_run_id=run.demo_run_id,
+        run_generation=run.current_generation,
     )
 
 

@@ -80,10 +80,7 @@ class DetectorReading:
     def __post_init__(self) -> None:
         if not isinstance(self.observed_at, datetime):
             raise TypeError("observed_at must be a datetime")
-        if (
-            self.observed_at.tzinfo is None
-            or self.observed_at.utcoffset() is None
-        ):
+        if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
             raise ValueError("observed_at must be timezone-aware")
         if isinstance(self.heart_rate_bpm, bool) or not isinstance(
             self.heart_rate_bpm, int
@@ -246,9 +243,7 @@ class AnomalyDetectorSession:
             raise TypeError("readings must be a sequence of DetectorReading")
         for index, reading in enumerate(readings):
             if not isinstance(reading, DetectorReading):
-                raise TypeError(
-                    f"readings[{index}] must be a DetectorReading"
-                )
+                raise TypeError(f"readings[{index}] must be a DetectorReading")
 
         before = self._detector.snapshot()
         anomalies: list[DetectedAnomaly] = []
