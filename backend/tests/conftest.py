@@ -21,10 +21,12 @@ if repository_root_text not in sys.path:
 
 TEST_DATABASE_NAME = "sahyog_test"
 TEST_DATABASE_USER = "sahyog_migrator"
-EXPECTED_REVISION = "99e748e414e3"
+EXPECTED_REVISION = "2f4d5b1a8c77"
 EXPECTED_TABLES = frozenset(
     {
         "users",
+        "auth_identities",
+        "caregiver_authorizations",
         "demo_runs",
         "health_readings",
         "anomaly_events",
@@ -102,7 +104,7 @@ def _connect_and_verify_database(engine: Engine) -> None:
             )
             if revisions != [EXPECTED_REVISION]:
                 pytest.fail(
-                    "sahyog_test must be at Alembic revision 99e748e414e3 before database tests.",
+                    "sahyog_test must be at Alembic revision 2f4d5b1a8c77 before database tests.",
                     pytrace=False,
                 )
 

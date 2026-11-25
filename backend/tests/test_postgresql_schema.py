@@ -19,9 +19,11 @@ from sqlalchemy.orm import Session
 
 pytestmark = pytest.mark.integration
 
-EXPECTED_REVISION = "99e748e414e3"
+EXPECTED_REVISION = "2f4d5b1a8c77"
 EXPECTED_TABLES = {
     "users",
+    "auth_identities",
+    "caregiver_authorizations",
     "demo_runs",
     "health_readings",
     "anomaly_events",

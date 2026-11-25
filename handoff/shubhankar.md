@@ -85,14 +85,22 @@ Last updated: 2026-11-25
 - Result: Passed, 14 tests.
 - Command: Prasiddh published detector integration and backend-contract tests
 - Result: Passed, 34 tests and 4 subtests.
+- Command: `uv run ruff check app tests; uv run ruff format --check app tests; uv run python -m compileall -q app`
+- Result: Passed.
+- Command: `uv run pytest -q --ignore=tests/test_postgresql_schema.py --ignore=tests/integration/test_postgres_schema.py`
+- Result: Passed, 26 tests.
+- Command: `uv run --group migrations alembic -c alembic.ini heads` and offline `upgrade head --sql`
+- Result: Passed; Alembic head is `2f4d5b1a8c77` and both migrations generate PostgreSQL DDL.
+- Command: full PostgreSQL suite with local isolated `sahyog_dev`/`sahyog_test` databases
+- Result: Passed, 54 tests; SCRAM authentication restored after provisioning.
 
 ## Commits
 - Commit ID: None; workspace is not currently a Git checkout.
 - Summary: Changes are uncommitted in the shared workspace.
 
 ## Blockers
-- Issue: PostgreSQL service/credentials are not configured in this workspace, so live database integration tests remain unexecuted.
-- Required decision/owner: Utkarsh must provide the isolated `SAHYOG_TEST_DATABASE_URL` and confirm the auth migration is applied.
+- Issue: Local database credentials are process-local and intentionally not committed.
+- Required decision/owner: Each developer/CI environment must provide its own `SAHYOG_DATABASE_URL`, `SAHYOG_TEST_DATABASE_URL`, and `SAHYOG_MIGRATION_DATABASE_URL`.
 - Issue: Local PostgreSQL credentials/service are not configured in this workspace.
 - Required decision/owner: Provide isolated `sahyog_dev`/`sahyog_test` URLs when running database integration tests; never use migration credentials for FastAPI.
 - Issue: The new auth migration must be applied to `sahyog_dev` and `sahyog_test` before live auth-route/database tests.
