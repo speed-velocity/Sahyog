@@ -14,6 +14,22 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sahyog_admin
+          # Disposable CI-only bootstrap password for the ephemeral job container.
+          POSTGRES_PASSWORD: sahyog-ci-disposable-admin-password
+          POSTGRES_DB: sahyog_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U sahyog_admin -d sahyog_dev"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+          --health-start-period=10s
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,5 +51,72 @@ jobs:
       - name: Check formatting with Ruff
         run: uv run --locked ruff format --check .
 
-      - name: Run tests
-        run: uv run --locked pytest
+      - name: Run ordinary tests
+        run: uv run --locked pytest -m "not integration"
+
+      - name: Generate and mask CI database credentials
+        run: |
+          set +x
+          uv run --locked python - <<'PY'
+          import os
+          import secrets
+
+          migrator_password = secrets.token_urlsafe(24)
+          app_password = secrets.token_urlsafe(24)
+
+          for value in (migrator_password, app_password):
+              print(f"::add-mask::{value}", flush=True)
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"SAHYOG_MIGRATOR_PASSWORD={migrator_password}\n")
+              env_file.write(f"SAHYOG_APP_PASSWORD={app_password}\n")
+          PY
+
+      - name: Create sahyog_test and provision PostgreSQL roles
+        env:
+          PGPASSWORD: sahyog-ci-disposable-admin-password
+        run: |
+          set +x
+          printf '::add-mask::%s\n' "${PGPASSWORD}"
+
+          if [ -z "${SAHYOG_MIGRATOR_PASSWORD:-}" ] || [ -z "${SAHYOG_APP_PASSWORD:-}" ]; then
+            echo "Generated database role passwords are missing." >&2
+            exit 1
+          fi
+
+          if ! command -v psql >/dev/null 2>&1 || ! command -v pg_isready >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends postgresql-client
+          fi
+
+          ready=0
+          for _ in $(seq 1 15); do
+            if pg_isready -h 127.0.0.1 -p 5432 -U sahyog_admin -d sahyog_dev >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "${ready}" -ne 1 ]; then
+            echo "PostgreSQL service did not become ready in time." >&2
+            exit 1
+          fi
+
+          psql -h 127.0.0.1 -p 5432 -U sahyog_admin -d sahyog_dev -X -q -v ON_ERROR_STOP=1 -f ../docker/postgres/init/01-create-test-database.sql
+          psql -h 127.0.0.1 -p 5432 -U sahyog_admin -d sahyog_dev -X -q -v ON_ERROR_STOP=1 -f ../docker/postgres/init/02-provision-roles.sql
+
+      - name: Apply Alembic migrations to sahyog_test
+        run: |
+          set +x
+          SAHYOG_MIGRATION_DATABASE_URL="postgresql+psycopg://sahyog_migrator:${SAHYOG_MIGRATOR_PASSWORD}@127.0.0.1:5432/sahyog_test"
+          printf '::add-mask::%s\n' "${SAHYOG_MIGRATION_DATABASE_URL}"
+          export SAHYOG_MIGRATION_DATABASE_URL
+          uv run --locked --group migrations alembic upgrade head
+
+      - name: Run PostgreSQL integration tests
+        run: |
+          set +x
+          SAHYOG_TEST_DATABASE_URL="postgresql+psycopg://sahyog_migrator:${SAHYOG_MIGRATOR_PASSWORD}@127.0.0.1:5432/sahyog_test"
+          printf '::add-mask::%s\n' "${SAHYOG_TEST_DATABASE_URL}"
+          export SAHYOG_TEST_DATABASE_URL
+          uv run --locked pytest -m integration
