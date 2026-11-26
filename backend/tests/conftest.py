@@ -15,9 +15,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-repository_root_text = str(REPOSITORY_ROOT)
-if repository_root_text not in sys.path:
-    sys.path.insert(0, repository_root_text)
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 TEST_DATABASE_NAME = "sahyog_test"
 TEST_DATABASE_USER = "sahyog_migrator"
