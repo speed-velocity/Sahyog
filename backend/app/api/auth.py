@@ -43,8 +43,12 @@ def register(request: RegisterRequest, session: Session = Depends(get_db)):
         created_at=now,
         updated_at=now,
     )
-    session.add_all([user, identity])
     try:
+        # User must be persisted first because AuthIdentity has a foreign key
+        # to users and no ORM relationship establishes the dependency.
+        session.add(user)
+        session.flush()
+        session.add(identity)
         session.commit()
     except IntegrityError as exc:
         session.rollback()
