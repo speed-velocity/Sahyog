@@ -12,6 +12,7 @@ from backend.app.core.clock import utc_now
 from backend.app.core.config import get_settings
 from backend.app.db.session import get_db
 from backend.app.models.demo import DemoRun
+from backend.app.models.readings import HealthReading
 from backend.app.schemas.auth import AuthenticatedPrincipal
 from backend.app.schemas.readings import ReadingRequest, ReadingResponse
 from backend.app.services.detector_adapter import Detector, DetectorReading
@@ -23,6 +24,9 @@ from backend.app.services.reading_service import (
 )
 
 router = APIRouter(prefix="/readings", tags=["readings"])
+
+MIN_DETECTOR_BPM = 20
+MAX_DETECTOR_BPM = 250
 
 
 def get_detector(
@@ -56,20 +60,63 @@ def ingest_reading(
         raise HTTPException(
             status_code=422, detail="Only SIMULATED readings are supported"
         )
+    if not MIN_DETECTOR_BPM <= request.heart_rate_bpm <= MAX_DETECTOR_BPM:
+        raise HTTPException(
+            status_code=422,
+            detail=f"heart_rate_bpm must be between {MIN_DETECTOR_BPM} and {MAX_DETECTOR_BPM}",
+        )
     if request.observed_at.tzinfo is None:
         raise HTTPException(
             status_code=422, detail="observed_at must include a timezone"
         )
     try:
-        result = detector.detect(
-            [
-                DetectorReading(
-                    observed_at=request.observed_at.astimezone(UTC),
-                    heart_rate_bpm=request.heart_rate_bpm,
-                    activity_context=request.activity_context,
-                )
-            ]
+        observed_at = request.observed_at.astimezone(UTC)
+        existing = session.scalar(
+            select(HealthReading).where(
+                HealthReading.subject_user_id == principal.user_id,
+                HealthReading.ingestion_idempotency_key
+                == request.ingestion_idempotency_key,
+            )
         )
+        if existing is not None:
+            same_payload = (
+                existing.demo_run_id == request.demo_run_id
+                and existing.source_kind == request.source_kind
+                and existing.heart_rate_bpm == request.heart_rate_bpm
+                and existing.observed_at == observed_at
+                and existing.activity_context == request.activity_context
+                and existing.source_record_id == request.source_record_id
+            )
+            if not same_payload:
+                raise HTTPException(
+                    status_code=409,
+                    detail="ingestion_idempotency_key was already used with a different reading",
+                )
+            result = None
+        else:
+            latest = session.scalar(
+                select(HealthReading)
+                .where(
+                    HealthReading.subject_user_id == principal.user_id,
+                    HealthReading.demo_run_id == request.demo_run_id,
+                )
+                .order_by(HealthReading.observed_at.desc())
+                .limit(1)
+            )
+            if latest is not None and observed_at <= latest.observed_at:
+                raise HTTPException(
+                    status_code=422,
+                    detail="observed_at must be later than the latest reading",
+                )
+            result = detector.detect(
+                [
+                    DetectorReading(
+                        observed_at=observed_at,
+                        heart_rate_bpm=request.heart_rate_bpm,
+                        activity_context=request.activity_context,
+                    )
+                ]
+            )
         reading, event = persist_reading(
             session,
             subject_user_id=principal.user_id,

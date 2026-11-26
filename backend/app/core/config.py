@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     detector_baseline_mean_bpm: float = 72.0
     detector_baseline_std_bpm: float = 4.0
     detector_session_cache_size: int = 256
+    timeout_worker_enabled: bool = True
+    timeout_worker_interval_seconds: float = 1.0
+    timeout_worker_batch_size: int = 50
+    cors_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     model_config = SettingsConfigDict(
         env_file=".env",
