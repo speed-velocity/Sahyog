@@ -43,6 +43,7 @@ try:
         DetectorResult as BackendDetectorResult,
     )
 except ModuleNotFoundError:
+
     class BackendDetectorReading(BaseModel):
         observed_at: datetime
         heart_rate_bpm: int
@@ -65,6 +66,7 @@ except ModuleNotFoundError:
             default_factory=list,
             max_length=32,
         )
+
 
 __all__ = [
     "BACKEND_EVIDENCE_LIMIT",
@@ -166,8 +168,7 @@ def _explanation(anomaly: DetectedAnomaly) -> str:
     )
     if len(evidence.samples) > BACKEND_EVIDENCE_LIMIT:
         explanation += (
-            f" Evidence is limited to the {BACKEND_EVIDENCE_LIMIT} most "
-            "recent samples."
+            f" Evidence is limited to the {BACKEND_EVIDENCE_LIMIT} most recent samples."
         )
     return explanation
 
@@ -214,7 +215,9 @@ class BackendDetector:
 
         return self._session.snapshot()
 
-    def detect(self, readings: Sequence[BackendDetectorReading]) -> BackendDetectorResult:
+    def detect(
+        self, readings: Sequence[BackendDetectorReading]
+    ) -> BackendDetectorResult:
         """Return the backend's single detector result for this call.
 
         The whole call is evaluated on a copy of detector state. A contract

@@ -9,6 +9,7 @@ REQUIRED_TABLES = {
     "users",
     "auth_identities",
     "caregiver_authorizations",
+    "location_snapshots",
     "demo_runs",
     "health_readings",
     "anomaly_events",
@@ -17,7 +18,6 @@ REQUIRED_TABLES = {
     "verification_responses",
     "escalation_attempts",
     "incident_timeline_events",
-    "location_snapshots",
 }
 
 
