@@ -4,11 +4,12 @@ import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 
-REQUIRED_REVISION = "2f4d5b1a8c77"
+REQUIRED_REVISION = "25c1af2fe01c"
 REQUIRED_TABLES = {
     "users",
     "auth_identities",
     "caregiver_authorizations",
+    "location_snapshots",
     "demo_runs",
     "health_readings",
     "anomaly_events",
