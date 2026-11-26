@@ -53,7 +53,22 @@ def persist_reading(
         )
     )
     if existing is not None:
-        return existing, None
+        # Replay the original detector outcome for an idempotent retry. The
+        # detector emits an event at the timestamp of the sample that
+        # completed the anomaly episode, so this lookup recovers the same
+        # event without feeding the duplicate sample into the stateful
+        # detector again.
+        existing_event = session.scalar(
+            select(AnomalyEvent)
+            .where(
+                AnomalyEvent.subject_user_id == existing.subject_user_id,
+                AnomalyEvent.demo_run_id == existing.demo_run_id,
+                AnomalyEvent.run_generation == existing.run_generation,
+                AnomalyEvent.detected_at == existing.observed_at,
+            )
+            .order_by(AnomalyEvent.detected_at.asc())
+        )
+        return existing, existing_event
     now = datetime.now(UTC)
     reading = HealthReading(
         reading_id=uuid4(),
