@@ -5,9 +5,19 @@ from uuid import uuid4
 
 import pytest
 from backend.app.api.location import get_location_service, router
+from backend.app.core.auth import require_active_principal
+from backend.app.db.session import get_db
+from backend.app.schemas.auth import AuthenticatedPrincipal, UserRole
 from backend.app.services.location import LocationService
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+SUBJECT_USER_ID = uuid4()
+
+
+class FakeLocationSession:
+    def get(self, _model, _identifier):
+        return type("OwnedRecord", (), {"subject_user_id": SUBJECT_USER_ID})()
 
 
 class FixedClock:
@@ -33,13 +43,17 @@ def location_context():
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_location_service] = lambda: service
+    app.dependency_overrides[require_active_principal] = lambda: AuthenticatedPrincipal(
+        user_id=SUBJECT_USER_ID, role=UserRole.SUBJECT
+    )
+    app.dependency_overrides[get_db] = FakeLocationSession
     with TestClient(app) as client:
         yield client, service, clock
 
 
 def test_submit_and_retrieve_latest_location(location_context) -> None:
     client, _service, _clock = location_context
-    subject_user_id = uuid4()
+    subject_user_id = SUBJECT_USER_ID
     incident_id = uuid4()
 
     response = client.post(
@@ -83,7 +97,7 @@ def test_latest_location_missing_returns_error_envelope(location_context) -> Non
 
     response = client.get(
         "/api/v1/location/latest",
-        params={"subject_user_id": str(uuid4())},
+        params={"subject_user_id": str(SUBJECT_USER_ID)},
     )
 
     assert response.status_code == 404
@@ -92,7 +106,7 @@ def test_latest_location_missing_returns_error_envelope(location_context) -> Non
 
 def test_latest_location_requires_exactly_one_selector(location_context) -> None:
     client, _service, _clock = location_context
-    subject_user_id = uuid4()
+    subject_user_id = SUBJECT_USER_ID
 
     missing = client.get("/api/v1/location/latest")
     ambiguous = client.get(
@@ -116,7 +130,7 @@ def test_future_capture_time_returns_custom_error(location_context) -> None:
     response = client.post(
         "/api/v1/location/updates",
         json={
-            "subject_user_id": str(uuid4()),
+            "subject_user_id": str(SUBJECT_USER_ID),
             "latitude": 18.5204,
             "longitude": 73.8567,
             "captured_at": captured_at.isoformat(),
@@ -134,7 +148,7 @@ def test_location_input_is_validated(location_context) -> None:
     invalid_coordinates = client.post(
         "/api/v1/location/updates",
         json={
-            "subject_user_id": str(uuid4()),
+            "subject_user_id": str(SUBJECT_USER_ID),
             "latitude": 91,
             "longitude": 73.8567,
             "captured_at": "2026-01-01T11:59:30Z",
@@ -143,7 +157,7 @@ def test_location_input_is_validated(location_context) -> None:
     missing_timezone = client.post(
         "/api/v1/location/updates",
         json={
-            "subject_user_id": str(uuid4()),
+            "subject_user_id": str(SUBJECT_USER_ID),
             "latitude": 18.5204,
             "longitude": 73.8567,
             "captured_at": "2026-01-01T11:59:30",
@@ -193,6 +207,10 @@ def test_hospital_directory_failure_returns_503() -> None:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_location_service] = lambda: service
+    app.dependency_overrides[require_active_principal] = lambda: AuthenticatedPrincipal(
+        user_id=SUBJECT_USER_ID, role=UserRole.SUBJECT
+    )
+    app.dependency_overrides[get_db] = FakeLocationSession
 
     with TestClient(app) as client:
         response = client.get(
