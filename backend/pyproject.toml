@@ -8,6 +8,9 @@ dependencies = [
     "pydantic-settings>=2.16,<3.0",
     "SQLAlchemy>=2.0,<2.1",
     "psycopg[binary]>=3.3,<3.4",
+    "pyjwt>=2.15.1",
+    "pwdlib[argon2]>=0.4.2",
+    "python-multipart>=0.0.34",
 ]
 
 [dependency-groups]
@@ -15,21 +18,37 @@ migrations = [
     "alembic>=1.20,<1.21",
 ]
 dev = [
+    "httpx2>=2.16.2",
     "pytest>=9.2,<10",
     "ruff>=0.17,<0.18",
 ]
 
 [tool.uv]
-# The backend runs from the workspace and is not installed as a wheel.
+# The backend source/package structure has not been created yet.
 package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+pythonpath = [".."]
 addopts = "-ra"
-markers = [
-    "integration: requires the isolated PostgreSQL sahyog_test database",
-]
 
 [tool.ruff]
 target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+"app/api/*.py" = ["B008"]
+"app/core/auth.py" = ["B008"]
+# These files are the published Role 1 detector implementation. Keep the
+# backend integration lint strict without rewriting its approved source.
+"app/services/anomaly.py" = ["TRY004", "UP006", "UP035", "UP045"]
+"app/services/anomaly_integration.py" = ["UP006", "UP035", "UP037", "UP045"]
+"app/services/detector_backend_contract.py" = ["I001", "RUF022", "UP045"]
+"app/services/last_moments_buffer.py" = ["TRY004", "UP006", "UP035", "UP045"]
+"app/services/reply_classifier.py" = ["UP006", "UP035"]
+"tests/test_anomaly.py" = ["SIM117", "UP017"]
+"tests/test_anomaly_integration.py" = ["SIM117", "UP017"]
+"tests/test_detector_backend_contract.py" = ["UP017"]
+"tests/test_detector_dedupe.py" = ["SIM117", "UP017"]
+"tests/test_last_moments_buffer.py" = ["SIM117", "UP017"]
+"tests/test_reply_classifier.py" = ["SIM117"]

@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from backend.app.db.base import Base
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
@@ -19,6 +18,8 @@ from sqlalchemy import (
     Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from backend.app.db.base import Base
 
 
 class HealthReading(Base):

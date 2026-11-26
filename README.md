@@ -1,58 +1,185 @@
-# SAHYOG — Detect. Verify. Respond.
+# Sahyog Android frontend
 
-SAHYOG is a simulated health-monitoring and emergency-response prototype. Its target architecture is a Flutter Android app, FastAPI backend, PostgreSQL database, and React caregiver dashboard. The three demo scenarios are `NORMAL`, `TRUE_ANOMALY`, and `FALSE_ALARM`; they are intended to use the same processing pipeline.
+Flutter Android presentation app for the Sahyog hackathon project. The current
+build is a local UI preview: simulator, backend, location, speech recognition,
+and incident services are not connected.
 
-This repository contains the project requirements, architecture, and initial backend tooling. Backend application code, mobile app, and dashboard are being added in phases. Do not treat simulated readings or notifications as real wearable measurements or delivered emergency communications.
+## Technologies
 
-## Technology baseline
+- Flutter and Dart
+- Material-style Flutter UI using the `material_ui` package
+- Android runner project using Kotlin and Gradle
+- Flutter widget tests
 
-The adopted integration baseline is Python 3.12, uv, FastAPI, Uvicorn, SQLAlchemy 2.x with synchronous database access, Alembic, PostgreSQL 16, Psycopg 3 with its binary extra, Pydantic Settings, pytest, Ruff, and GitHub Actions. Mobile and dashboard tooling follows the approved project architecture. Backend application configuration remains owned by Shubhankar.
+Use a Flutter SDK whose bundled Dart version satisfies the constraint in
+`pubspec.yaml`.
 
-## Windows development prerequisites
+## Run the app
 
-Install the project toolchain using the official distribution instructions for each tool. The project baseline currently specifies:
+From this directory:
 
-- Git
-- Python 3.12
-- uv
-- PostgreSQL 16 and its command-line client (`psql`)
-- Uvicorn, Psycopg, and other backend Python dependencies installed by uv from the backend lockfile
-- Flutter SDK and Android SDK for mobile work
-- Node.js for dashboard work; the exact version will be recorded with the dashboard manifest
-
-From PowerShell, verify the tools available on your machine:
-
-```powershell
-Set-Location E:\sahyog-repo
-git status --short --branch
-py -3.12 --version
-uv --version
-psql --version
-flutter --version
-node --version
+```sh
+flutter pub get
+flutter run
 ```
 
-Some tools are only needed for their corresponding component. Install backend dependencies and run checks from PowerShell with:
+The Android application ID is currently `com.sahyog.sahyog_mobile`. Confirm the
+final application ID and release signing configuration with the integration
+lead before preparing a release build.
+
+## Frontend screens
+
+- **Monitoring:** Shows connection and reading states, scenario controls, and a
+  scenario progress preview.
+- **Verification:** Shows that verification status is unavailable in this
+  preview and provides a local-only acknowledgement interaction.
+- **Incident:** Shows that incident status is unavailable and explains which
+  future status information will come from the backend.
+
+The illustrative **72 bpm** value is labeled “NOT LIVE DATA” and is not from a
+sensor or simulator.
+
+## Local scenario previews
+
+The Monitoring screen provides `NORMAL`, `TRUE_ANOMALY`, and `FALSE_ALARM`.
+Each button starts the same local 60-second presentation timer. A preview can
+be reset or replayed, and a running preview prevents another scenario from
+starting. These previews generate no readings and make no detection, incident,
+verification, resolution, or escalation decisions.
+
+The Verification screen’s “I’m okay” action only displays local preview
+feedback. No reply is sent and no incident status is changed.
+
+## Run tests and checks
+
+From this directory:
+
+```sh
+dart format lib test
+flutter analyze
+flutter test
+```
+
+## Current limitations
+
+- Heart-rate readings, simulator scenarios, and anomaly detection are not
+  integrated. The preview timer is not a monitoring timer.
+- Backend authentication, APIs, authoritative incident state, verification
+  responses, and escalation are not integrated.
+- Location services and location permissions are not integrated.
+- Speech recognition, reply classification, and wearable connectivity are not
+  implemented.
+- Android release signing is not configured; the generated release build
+  configuration currently uses debug signing.
+
+## Pending integration dependencies
+
+- **Prasiddh:** Publish the agreed simulator, heart-rate reading, and monitoring
+  interfaces before connecting monitoring UI.
+- **Shubhankar:** Confirm API routes, request/response schemas, authentication,
+  incident lifecycle, verification behavior, and error contracts.
+- **Vaishnavi:** Confirm the approved location interface and permission behavior
+  before adding mobile location integration.
+- **Utkarsh:** Confirm shared dependencies, Android SDK/build settings, final
+  application ID, and release configuration.
+
+No pending integration is represented as completed in this preview.
+# SAHYOG — Detect. Verify. Respond.
+
+SAHYOG is a simulated health-monitoring and emergency-response prototype. It demonstrates one shared pipeline for detecting unusual health patterns, verifying the person’s condition, and escalating when there is no response.
+
+The prototype is designed for local demonstrations and is not a clinical medical device or a guaranteed emergency-dispatch service.
+
+## Demo scenarios
+
+The same application pipeline supports three deterministic scenarios:
+
+- `NORMAL` — simulated normal readings, no incident, no escalation.
+- `TRUE_ANOMALY` — sustained abnormal readings, verification timeout, and escalation.
+- `FALSE_ALARM` — abnormal readings, `I_AM_OK` confirmation, and false-alarm resolution.
+
+Simulated readings and mock notifications must always be labelled as simulated.
+
+## Architecture
+
+- Flutter Android application for monitoring and scenario control.
+- FastAPI backend for authentication, readings, anomaly integration, incidents, verification, escalation, and dashboard APIs.
+- PostgreSQL with SQLAlchemy and Alembic for durable persistence.
+- React caregiver dashboard for backend-authoritative status and incident visibility.
+- Pluggable anomaly detector and notifier boundaries for future integrations.
+
+The backend owns incident state. The detector supplies anomaly results; it does not create incidents directly. The dashboard consumes backend responses rather than detector payloads.
+
+## Backend API highlights
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/token`
+- `POST /api/v1/authorizations`
+- `DELETE /api/v1/authorizations/{authorization_id}`
+- `POST /api/v1/demo/runs`
+- `GET /api/v1/demo/runs/{demo_run_id}`
+- `POST /api/v1/demo/runs/{demo_run_id}/reset`
+- `POST /api/v1/readings`
+- `GET /api/v1/incidents`
+- `GET /api/v1/incidents/{incident_id}`
+- `POST /api/v1/incidents/{incident_id}/verification`
+- `GET /api/v1/dashboard/overview`
+- `GET /health`
+
+## Local backend setup
+
+Requirements:
+
+- Python 3.12
+- `uv`
+- PostgreSQL 16 for database-backed execution
+
+From `backend/`:
 
 ```powershell
-Set-Location E:\sahyog-repo\backend
 uv sync --locked --group migrations --group dev
 uv run --locked ruff check .
 uv run --locked ruff format --check .
 uv run --locked pytest
 ```
 
-The application source, database settings, and migration environment are not present yet, so backend startup and database connection commands will be documented after those owner-managed components are implemented. Psycopg's binary extra avoids requiring a local compiler or separately installed client library for the Python driver; a local PostgreSQL 16 server is still required for database-backed work.
+Copy `backend/.env.example` to a local `.env` and replace its placeholders. Never commit real passwords, signing keys, or database URLs.
+
+Use separate credentials for:
+
+- `SAHYOG_DATABASE_URL` — FastAPI runtime.
+- `SAHYOG_MIGRATION_DATABASE_URL` — Alembic migrations.
+- `SAHYOG_TEST_DATABASE_URL` — isolated PostgreSQL tests.
+
+Apply schema changes only through Alembic migrations:
+
+```powershell
+uv run --locked --group migrations alembic -c alembic.ini upgrade head
+```
+
+## Security and data handling
+
+- Passwords are stored as Argon2 hashes, never plaintext.
+- Access tokens are signed JWTs with an environment-provided secret.
+- Caregiver access requires explicit subject approval.
+- Revocation immediately blocks future protected requests while preserving history.
+- Migration and application database credentials are separate.
+- Health data and location data should be minimized and must not be unnecessarily logged.
+
+## Credits
+
+SAHYOG was developed collaboratively by:
+
+- **Prasiddh — AI/ML and health monitoring:** simulated reading analysis, anomaly detection, detector contracts, deterministic test vectors, and anomaly evidence design.
+- **Vaishnavi — dashboard and location:** caregiver dashboard, location handling, hospital-data integration, and dashboard-facing state requirements.
+- **Shubhankar — backend engineering:** FastAPI application, authentication, authorization, API schemas, incident lifecycle, verification, escalation orchestration, detector integration boundary, and backend tests.
+- **Aditya — Flutter Android application:** mobile monitoring experience, demo scenario controls, verification UI, simulated reading presentation, and backend integration.
+- **Utkarsh — software integration and database engineering:** PostgreSQL foundation, SQLAlchemy models, Alembic migrations, database roles, CI infrastructure, integration tests, notifier/hospital integration coordination, and cross-component integration.
 
 ## Project documents
 
-- [PRD.md](PRD.md) — product behavior and scope
-- [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) — proposed architecture and contracts
-- [TEAM.md](TEAM.md) — role ownership
-- [Agents.md](Agents.md) — coding-agent instructions
-- [HandOff.md](HandOff.md) — shared progress and integration tracker
-- [docs/PHASE_0A_FOUNDATION.md](docs/PHASE_0A_FOUNDATION.md) — repository baseline and foundation ownership
-
-## Development and integration
-
-Use the assigned feature branch and coordinate shared contracts with the component owners. Keep secrets in local environment configuration; never commit credentials or place backend secrets in mobile or dashboard code. Role 5 coordinates database infrastructure, migrations, repository tooling, CI, and cross-component integration. See `TEAM.md` and `HandOff.md` before taking on component-owned work.
+- [PRD.md](PRD.md) — product requirements and scope.
+- [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) — architecture and contracts.
+- [TEAM.md](TEAM.md) — ownership and responsibilities.
+- [Agents.md](Agents.md) — coding-agent instructions.
+- [HandOff.md](HandOff.md) — shared integration tracker.

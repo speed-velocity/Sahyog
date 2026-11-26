@@ -1,0 +1,26 @@
+import type { ReactNode } from 'react';
+
+interface SectionCardProps {
+  title?: string;
+  subtitle?: string;
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}
+
+export function SectionCard({ title, subtitle, actions, children, className }: SectionCardProps) {
+  return (
+    <section className={`card${className ? ` ${className}` : ''}`}>
+      {title || actions ? (
+        <header className="card__header">
+          <div>
+            {title ? <h2 className="card__title">{title}</h2> : null}
+            {subtitle ? <p className="card__subtitle">{subtitle}</p> : null}
+          </div>
+          {actions ? <div className="card__actions">{actions}</div> : null}
+        </header>
+      ) : null}
+      <div className="card__body">{children}</div>
+    </section>
+  );
+}

@@ -20,10 +20,6 @@ Runtime application settings and the migration connection are separate
 contracts. Shubhankar owns the application's engine/session bootstrap; this
 Alembic environment creates only a short-lived migration connection.
 
-PostgreSQL integration tests use the separate `SAHYOG_TEST_DATABASE_URL`
-setting documented in `backend/tests/README.md`. Do not reuse the migration
-URL as an application or general test connection setting.
-
 ## Commands
 
 From the repository root, provide an approved migration URL in the current
