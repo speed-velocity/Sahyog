@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from math import isfinite
 from typing import Deque, Literal, Optional, Tuple
 
@@ -112,9 +112,9 @@ class DetectorConfig:
 class HrSample:
     """One heart-rate sample in whole beats per minute.
 
-    ``ts`` is the sample's observed time. Timezone handling is not resolved
-    team-wide; naive and aware datetimes must not be mixed within one detection
-    run because their ordering would be undefined.
+    ``ts`` is the sample's observed time. Naive datetimes are rejected by
+    :meth:`AnomalyDetector.feed`; timezone-aware datetimes are normalized to UTC
+    before comparison.
     """
 
     ts: datetime
@@ -325,6 +325,13 @@ class AnomalyDetector:
         if not isinstance(ts, datetime):
             self._rejected_sample_count += 1
             return None
+        # Reject naive timestamps; require timezone-aware UTC.
+        if ts.tzinfo is None or ts.utcoffset() is None:
+            self._rejected_sample_count += 1
+            return None
+        # Normalize to UTC for consistent comparison.
+        if ts.tzinfo is not UTC:
+            ts = ts.astimezone(UTC)
         if (
             isinstance(hr, bool)
             or not isinstance(hr, int)

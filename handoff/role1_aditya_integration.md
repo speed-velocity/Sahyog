@@ -2,7 +2,7 @@
 
 **For:** Aditya (Role 4: Flutter Android Frontend)  
 **Branch:** `Ai/ml-and-monitoring`  
-**Commit:** `2b5a193` — fix(role-1): align simulator and backend contracts  
+**Commit:** `d21d457` — fix(role-1): enforce UTC timestamps and align with Python 3.12  
 
 This document contains the exact interfaces and patterns Aditya can rely on for integrating the Role 1 implementation into the Flutter application.
 
@@ -336,8 +336,56 @@ The following assumptions are subject to Aditya's confirmation during Flutter pr
 
 ---
 
+## 12. Backend Correction Record — UTC Timestamp Enforcement
+
+**Task:** Role 1 correction follow-up  
+**Status:** `TESTED`  
+**Implementation commit:** `d21d4570e9237285186a8162f4ac9aba1d84ad09`
+
+### Behaviour now enforced by `AnomalyDetector.feed()`
+
+| Input | Behaviour |
+|---|---|
+| Naive `datetime` (`tzinfo is None`) | Rejected — `rejected_sample_count` increments, `feed()` returns `None` |
+| Aware `datetime` whose `utcoffset()` is `None` | Rejected — same counter, `feed()` returns `None` |
+| Aware `datetime` in any timezone | Normalized to UTC via `astimezone(UTC)` before ordering and persistence checks |
+| Non-`datetime` `ts`, non-`int` or out-of-range `hr` | Rejected exactly as before — unchanged |
+
+The detector never raises for malformed samples; rejection is silent apart from the counter. `DetectorSnapshot.last_accepted_ts` is always the normalized UTC value.
+
+### What changed
+
+- `backend/app/services/anomaly.py` — added the naive-timestamp rejection guard and UTC normalization in `feed()`; corrected the `HrSample` docstring, which previously stated that naive and aware timestamps must not be mixed.
+- `backend/tests/test_anomaly.py` — replaced `test_naive_and_aware_timestamps_are_not_mixed` with `test_naive_timestamps_are_rejected`, asserting `accepted_sample_count == 0`, `rejected_sample_count == 1` and `last_accepted_ts is None` for a naive sample, then that aware samples are accepted and normalized.
+
+No signature, dataclass field, `__all__` export or backend API field changed.
+
+### Python version alignment
+
+The correction uses `from datetime import UTC`, matching the declared target: `requires-python = ">=3.12,<3.13"` and Ruff `target-version = "py312"`. Python 3.10 compatibility is **not** claimed and must not be assumed.
+
+### Verification
+
+| Check | Command | Result |
+|---|---|---|
+| Lint | `uv run --locked ruff check .` | All checks passed |
+| Format | `uv run --locked ruff format --check .` | 82 files already formatted |
+| Role 1 suites | `uv run --locked pytest tests/test_anomaly.py tests/test_anomaly_integration.py tests/test_detector_dedupe.py tests/test_last_moments_buffer.py tests/test_detector_backend_contract.py tests/test_reply_classifier.py` | 118 passed (39/18/14/18/16/13), 0 failed, 0 skipped |
+| Ordinary suite | `uv run --locked pytest -m "not integration"` | 164 passed, 1 skipped, 27 deselected |
+| Compile | `py -m compileall -q backend` | exit 0 |
+
+`tests/test_postgresql_schema.py` was not executed locally: it requires `SAHYOG_TEST_DATABASE_URL`, which CI supplies through its PostgreSQL service container.
+
+### Unchanged
+
+- `detector_version` was already part of the backend contract (`detector_backend_contract.py`) before this commit; no detector-version field was added or modified.
+- Ownership boundaries are unchanged — see §11. Backend database queries, API clients and UI remain outside Role 1.
+
+---
+
 ## Change Log
 
 | Date | Change | Owner |
 |---|---|---|
 | 2026-11-27 | Initial version — aligned simulator constructor, verified backend response fields, updated documentation | Prasiddh |
+| 2026-11-28 | Recorded UTC timestamp enforcement correction, Python 3.12 alignment, and verified results (commit `d21d457`) | Prasiddh |

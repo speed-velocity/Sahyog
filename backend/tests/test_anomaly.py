@@ -470,19 +470,32 @@ class SampleValidationTests(unittest.TestCase):
         self.assertIsNone(detector.feed(HrSample("2026-01-01T00:00:00Z", 72)))
         self.assertEqual(detector.snapshot().rejected_sample_count, 1)
 
-    def test_naive_and_aware_timestamps_are_not_mixed(self) -> None:
+    def test_naive_timestamps_are_rejected(self) -> None:
         detector = make_detector()
         naive_start = datetime(2026, 1, 1, 0, 0, 0)
-        detector.feed(HrSample(naive_start, 72))
-        self.assertIsNone(detector.feed(HrSample(BASE_TS, 72)))
+        # Naive timestamps must be rejected; the detector requires UTC-aware timestamps.
+        self.assertIsNone(detector.feed(HrSample(naive_start, 72)))
+        snapshot = detector.snapshot()
+        self.assertEqual(snapshot.accepted_sample_count, 0)
+        self.assertEqual(snapshot.rejected_sample_count, 1)
+        self.assertIsNone(snapshot.last_accepted_ts)
+
+        # Aware UTC timestamps are accepted (sample counted) even when no anomaly
+        # is emitted — normal readings return None from feed but increment
+        # accepted_sample_count.
+        result = detector.feed(HrSample(BASE_TS, 72))
+        self.assertIsNone(result)
         snapshot = detector.snapshot()
         self.assertEqual(snapshot.accepted_sample_count, 1)
         self.assertEqual(snapshot.rejected_sample_count, 1)
-        self.assertEqual(snapshot.last_accepted_ts, naive_start)
-        detector.feed(HrSample(naive_start + timedelta(seconds=1), 72))
+        self.assertEqual(snapshot.last_accepted_ts, BASE_TS)
+
+        # A later aware timestamp is also accepted.
+        result = detector.feed(HrSample(BASE_TS + timedelta(seconds=1), 72))
+        self.assertIsNone(result)
         snapshot = detector.snapshot()
         self.assertEqual(snapshot.accepted_sample_count, 2)
-        self.assertEqual(snapshot.last_accepted_ts, naive_start + timedelta(seconds=1))
+        self.assertEqual(snapshot.rejected_sample_count, 1)
 
     def test_equal_and_out_of_order_samples_are_rejected(self) -> None:
         detector = make_detector()
