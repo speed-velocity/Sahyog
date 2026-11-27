@@ -35,9 +35,9 @@ export default function App() {
   }, []);
 
   const overviewData = overview.data;
-  const subjectName = overviewData?.subject?.display_name?.trim() || 'Monitored person';
+  const subjectName = overviewData?.subject_user_id ? 'Monitored person' : '';
   const dataSource =
-    overviewData?.monitoring?.data_source ?? overviewData?.subject?.data_source ?? null;
+    overviewData?.monitoring?.data_source ?? null;
   const activeIncidents = overviewData?.active_incidents ?? null;
   const activeCount =
     typeof overviewData?.active_incident_count === 'number'

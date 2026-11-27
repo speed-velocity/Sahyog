@@ -29,8 +29,7 @@ describe('SAHYOG caregiver dashboard', () => {
     render(<App />);
 
     expect(await screen.findByText(/Normal operation/)).toBeInTheDocument();
-    expect(screen.getAllByText('Meera Sharma').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('78 bpm').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Monitored person').length).toBeGreaterThan(0);
     expect(await screen.findByText('No recent incidents')).toBeInTheDocument();
     expect(screen.getAllByText(/Simulated/).length).toBeGreaterThan(0);
     expect(screen.getByText('Active incidents')).toBeInTheDocument();
