@@ -7,6 +7,7 @@ from backend.app.schemas.auth import UserRole
 from backend.app.services.authorization import (
     AuthorizationServiceError,
     grant_caregiver_access,
+    list_active_authorizations,
 )
 
 
@@ -41,3 +42,19 @@ def test_only_active_caregiver_can_be_granted_access() -> None:
 
     assert authorization.caregiver_user_id == caregiver_id
     session.add.assert_called_once()
+
+
+def test_list_active_authorizations_filters_for_caregiver() -> None:
+    session = MagicMock()
+    session.scalars.return_value.all.return_value = []
+    caregiver_id = uuid4()
+
+    assert (
+        list_active_authorizations(
+            session,
+            user_id=caregiver_id,
+            role=UserRole.CAREGIVER,
+        )
+        == []
+    )
+    session.scalars.assert_called_once()
