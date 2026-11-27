@@ -20,3 +20,15 @@ class AuthorizationResponse(BaseModel):
     caregiver_user_id: UUID
     granted_at: datetime
     revoked_at: datetime | None
+
+
+class AuthorizedSubjectResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    subject_user_id: UUID
+    granted_at: datetime
+    revoked_at: datetime | None
+
+
+class AuthorizedSubjectsResponse(BaseModel):
+    authorized_subjects: list[AuthorizedSubjectResponse]
