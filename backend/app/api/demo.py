@@ -23,13 +23,17 @@ def start_demo(
 ) -> DemoRunResponse:
     if principal.role is not UserRole.SUBJECT:
         raise HTTPException(status_code=403, detail="Only subjects may start demos")
-    run = create_demo_run(
-        session,
-        subject_user_id=principal.user_id,
-        scenario=request.scenario,
-        start_idempotency_key=request.start_idempotency_key,
-    )
-    session.commit()
+    try:
+        run = create_demo_run(
+            session,
+            subject_user_id=principal.user_id,
+            scenario=request.scenario,
+            start_idempotency_key=request.start_idempotency_key,
+        )
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return DemoRunResponse.model_validate(run)
 
 
