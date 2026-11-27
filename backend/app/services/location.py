@@ -2,28 +2,58 @@
 
 from __future__ import annotations
 
-import math
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
-from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from backend.app.services.hospital import (
+    DEFAULT_HOSPITAL_RESULT_LIMIT,
+    EARTH_RADIUS_METERS,
+    MAX_HOSPITAL_RESULT_LIMIT,
+    MIN_HOSPITAL_RESULT_LIMIT,
+    SEEDED_HOSPITAL_DISCLAIMER,
+    SEEDED_HOSPITAL_PROVIDER,
+    HospitalDirectory,
+    HospitalSeed,
+    HospitalService,
+    HospitalServiceProtocol,
+    NearbyHospital,
+    NearbyHospitalsResponse,
+    SeededHospitalDirectory,
+    haversine_distance_meters,
+)
+
+__all__ = [
+    "DEFAULT_HOSPITAL_RESULT_LIMIT",
+    "DEFAULT_MAX_LOCATION_ENTRIES",
+    "DEFAULT_STALE_AFTER_SECONDS",
+    "EARTH_RADIUS_METERS",
+    "MAX_FUTURE_CAPTURE_SKEW_SECONDS",
+    "MAX_HOSPITAL_RESULT_LIMIT",
+    "MIN_HOSPITAL_RESULT_LIMIT",
+    "SEEDED_HOSPITAL_DISCLAIMER",
+    "SEEDED_HOSPITAL_PROVIDER",
+    "HospitalDirectory",
+    "HospitalSeed",
+    "HospitalService",
+    "HospitalServiceProtocol",
+    "LocationService",
+    "LocationSnapshot",
+    "LocationUpdateRejected",
+    "LocationUpdateRequest",
+    "NearbyHospital",
+    "NearbyHospitalsResponse",
+    "SeededHospitalDirectory",
+    "haversine_distance_meters",
+]
 
 DEFAULT_STALE_AFTER_SECONDS = 300
 MAX_FUTURE_CAPTURE_SKEW_SECONDS = 120
 DEFAULT_MAX_LOCATION_ENTRIES = 512
-DEFAULT_HOSPITAL_RESULT_LIMIT = 5
-MIN_HOSPITAL_RESULT_LIMIT = 1
-MAX_HOSPITAL_RESULT_LIMIT = 10
-EARTH_RADIUS_METERS = 6_371_000.0
-SEEDED_HOSPITAL_PROVIDER = "SEEDED_DEMO_DIRECTORY"
-SEEDED_HOSPITAL_DISCLAIMER = (
-    "Seeded demonstration hospital data only. No hospital has been contacted, "
-    "is confirmed available, or has accepted an incident."
-)
 
 
 class LocationUpdateRequest(BaseModel):
@@ -75,91 +105,6 @@ class LocationSnapshot(BaseModel):
     stale_after_seconds: int
 
 
-class HospitalSeed(BaseModel):
-    """A clearly labelled hospital directory entry."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    hospital_id: UUID
-    name: str
-    address: str
-    latitude: float
-    longitude: float
-    source_kind: str = "SEEDED_DEMO"
-
-
-class NearbyHospital(BaseModel):
-    """Hospital directory entry enriched with distance from the query point."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    hospital_id: UUID
-    name: str
-    address: str
-    latitude: float
-    longitude: float
-    distance_meters: float
-    source_kind: str
-
-
-class NearbyHospitalsResponse(BaseModel):
-    """Bounded hospital list with explicit provenance and disclaimer."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    hospitals: list[NearbyHospital]
-    provider: str | None = None
-    disclaimer: str
-    generated_at: datetime
-
-
-class HospitalDirectory(Protocol):
-    """Narrow boundary for replacing seeded data with the shared provider."""
-
-    @property
-    def provider_name(self) -> str: ...
-
-    @property
-    def disclaimer(self) -> str: ...
-
-    def list_hospitals(self) -> Sequence[HospitalSeed]: ...
-
-
-class SeededHospitalDirectory:
-    """Offline fallback with fictional demonstration hospitals only."""
-
-    provider_name = SEEDED_HOSPITAL_PROVIDER
-    disclaimer = SEEDED_HOSPITAL_DISCLAIMER
-
-    def __init__(self) -> None:
-        self._hospitals = (
-            HospitalSeed(
-                hospital_id=uuid5(NAMESPACE_URL, "sahyog-demo-hospital:central"),
-                name="Sahyog Demo Central Hospital",
-                address="Demo directory entry, central Pune",
-                latitude=18.5167,
-                longitude=73.8740,
-            ),
-            HospitalSeed(
-                hospital_id=uuid5(NAMESPACE_URL, "sahyog-demo-hospital:north"),
-                name="Sahyog Demo North Emergency Centre",
-                address="Demo directory entry, north Pune",
-                latitude=18.5679,
-                longitude=73.8730,
-            ),
-            HospitalSeed(
-                hospital_id=uuid5(NAMESPACE_URL, "sahyog-demo-hospital:west"),
-                name="Sahyog Demo Community Care",
-                address="Demo directory entry, west Pune",
-                latitude=18.5089,
-                longitude=73.8077,
-            ),
-        )
-
-    def list_hospitals(self) -> Sequence[HospitalSeed]:
-        return self._hospitals
-
-
 class LocationUpdateRejected(ValueError):
     """Raised when a location timestamp is not credible for the current clock."""
 
@@ -178,14 +123,26 @@ class LocationService:
         self,
         hospital_directory: HospitalDirectory | None = None,
         *,
+        hospital_service: HospitalServiceProtocol | None = None,
         stale_after_seconds: int = DEFAULT_STALE_AFTER_SECONDS,
         max_location_entries: int = DEFAULT_MAX_LOCATION_ENTRIES,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        self._hospital_directory = hospital_directory or SeededHospitalDirectory()
+        if hospital_directory is not None and hospital_service is not None:
+            raise ValueError(
+                "Provide at most one of hospital_directory or hospital_service"
+            )
         self._stale_after_seconds = max(1, int(stale_after_seconds))
         self._max_location_entries = max(1, int(max_location_entries))
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._hospital_service: HospitalServiceProtocol = (
+            hospital_service or HospitalService(hospital_directory, clock=self._clock)
+        )
+        self._hospital_directory = (
+            hospital_directory
+            if hospital_directory is not None
+            else getattr(self._hospital_service, "directory", None)
+        )
         self._lock = threading.Lock()
         self._by_subject: dict[UUID, _StoredLocation] = {}
         self._by_incident: dict[UUID, _StoredLocation] = {}
@@ -193,6 +150,14 @@ class LocationService:
     @property
     def stale_after_seconds(self) -> int:
         return self._stale_after_seconds
+
+    @property
+    def hospital_directory(self) -> HospitalDirectory | None:
+        return self._hospital_directory
+
+    @property
+    def hospital_service(self) -> HospitalServiceProtocol:
+        return self._hospital_service
 
     def record_location(self, update: LocationUpdateRequest) -> LocationSnapshot:
         now = self._now()
@@ -234,40 +199,7 @@ class LocationService:
         longitude: float,
         limit: int = DEFAULT_HOSPITAL_RESULT_LIMIT,
     ) -> NearbyHospitalsResponse:
-        if not -90 <= latitude <= 90:
-            raise ValueError("latitude must be between -90 and 90")
-        if not -180 <= longitude <= 180:
-            raise ValueError("longitude must be between -180 and 180")
-
-        safe_limit = max(
-            MIN_HOSPITAL_RESULT_LIMIT,
-            min(int(limit), MAX_HOSPITAL_RESULT_LIMIT),
-        )
-        hospitals = [
-            NearbyHospital(
-                hospital_id=hospital.hospital_id,
-                name=hospital.name,
-                address=hospital.address,
-                latitude=hospital.latitude,
-                longitude=hospital.longitude,
-                source_kind=hospital.source_kind,
-                distance_meters=haversine_distance_meters(
-                    latitude,
-                    longitude,
-                    hospital.latitude,
-                    hospital.longitude,
-                ),
-            )
-            for hospital in self._hospital_directory.list_hospitals()
-        ]
-        hospitals.sort(key=lambda hospital: (hospital.distance_meters, hospital.name))
-
-        return NearbyHospitalsResponse(
-            hospitals=hospitals[:safe_limit],
-            provider=self._hospital_directory.provider_name,
-            disclaimer=self._hospital_directory.disclaimer,
-            generated_at=self._now(),
-        )
+        return self._hospital_service.nearby_hospitals(latitude, longitude, limit)
 
     def _put_latest(
         self,
@@ -306,23 +238,3 @@ class LocationService:
         if current.tzinfo is None or current.utcoffset() is None:
             raise ValueError("location clock must return a timezone-aware datetime")
         return current.astimezone(UTC)
-
-
-def haversine_distance_meters(
-    latitude_a: float,
-    longitude_a: float,
-    latitude_b: float,
-    longitude_b: float,
-) -> float:
-    latitude_a_radians = math.radians(latitude_a)
-    latitude_b_radians = math.radians(latitude_b)
-    latitude_delta = math.radians(latitude_b - latitude_a)
-    longitude_delta = math.radians(longitude_b - longitude_a)
-
-    haversine = (
-        math.sin(latitude_delta / 2) ** 2
-        + math.cos(latitude_a_radians)
-        * math.cos(latitude_b_radians)
-        * math.sin(longitude_delta / 2) ** 2
-    )
-    return 2 * EARTH_RADIUS_METERS * math.asin(min(1.0, math.sqrt(haversine)))
