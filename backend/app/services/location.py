@@ -159,7 +159,12 @@ class LocationService:
     def hospital_service(self) -> HospitalServiceProtocol:
         return self._hospital_service
 
-    def record_location(self, update: LocationUpdateRequest) -> LocationSnapshot:
+    def current_time(self) -> datetime:
+        """Return the current timezone-aware UTC datetime from the configured clock."""
+        return self._now()
+
+    def prepare_snapshot(self, update: LocationUpdateRequest) -> LocationSnapshot:
+        """Validate timestamp skew and prepare a LocationSnapshot without modifying the cache."""
         now = self._now()
         if update.captured_at > now + timedelta(
             seconds=MAX_FUTURE_CAPTURE_SKEW_SECONDS
@@ -173,13 +178,39 @@ class LocationService:
             update=update,
             received_at=now,
         )
+        return self._snapshot(stored, now)
+
+    def publish_snapshot(
+        self,
+        snapshot: LocationSnapshot,
+        update: LocationUpdateRequest | None = None,
+    ) -> None:
+        """Publish an established LocationSnapshot to the in-memory cache."""
+        effective_update = update or LocationUpdateRequest(
+            subject_user_id=snapshot.subject_user_id,
+            incident_id=snapshot.incident_id,
+            demo_run_id=snapshot.demo_run_id,
+            latitude=snapshot.latitude,
+            longitude=snapshot.longitude,
+            accuracy_meters=snapshot.accuracy_meters,
+            captured_at=snapshot.captured_at,
+            source_kind=snapshot.source_kind,
+        )
+        stored = _StoredLocation(
+            location_snapshot_id=snapshot.location_snapshot_id,
+            update=effective_update,
+            received_at=snapshot.received_at,
+        )
 
         with self._lock:
-            self._put_latest(self._by_subject, update.subject_user_id, stored)
-            if update.incident_id is not None:
-                self._put_latest(self._by_incident, update.incident_id, stored)
+            self._put_latest(self._by_subject, snapshot.subject_user_id, stored)
+            if snapshot.incident_id is not None:
+                self._put_latest(self._by_incident, snapshot.incident_id, stored)
 
-        return self._snapshot(stored, now)
+    def record_location(self, update: LocationUpdateRequest) -> LocationSnapshot:
+        snapshot = self.prepare_snapshot(update)
+        self.publish_snapshot(snapshot, update=update)
+        return snapshot
 
     def latest_for_subject(self, subject_user_id: UUID) -> LocationSnapshot | None:
         now = self._now()

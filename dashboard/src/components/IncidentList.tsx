@@ -52,7 +52,7 @@ export function IncidentList({
             >
               Created {formatRelativeTime(incident.created_at)}
             </span>
-            {incident.verification?.pending === true || incident.status === 'VERIFICATION_PENDING' ? (
+            {incident.verification?.pending === true || incident.status === 'PENDING_VERIFICATION' ? (
               <span className="incident-item__flag">Awaiting verification</span>
             ) : null}
           </button>

@@ -13,12 +13,8 @@ import { SimulatedNotice } from '../components/SimulatedNotice';
 import { StatCard } from '../components/StatCard';
 import { StatusBadge } from '../components/StatusBadge';
 import type { ViewKey } from '../components/Sidebar';
-import { formatHeartRate, formatRelativeTime, isReadingStale } from '../lib/format';
-import {
-  getNotificationMeta,
-  getStatusMeta,
-  isEscalatedStatus,
-} from '../lib/status';
+import { formatHeartRate, formatRelativeTime } from '../lib/format';
+import { getStatusMeta, isEscalatedStatus } from '../lib/status';
 import { selectLatestReading, selectRecentReadings } from '../lib/readings';
 
 interface OverviewViewProps {
@@ -32,7 +28,7 @@ interface OverviewViewProps {
   onSelectIncident: (incidentId: string) => void;
 }
 
-function ActiveResponseSummary({
+function ActiveIncidentSummary({
   incident,
   onSelectIncident,
 }: {
@@ -40,15 +36,6 @@ function ActiveResponseSummary({
   onSelectIncident: (incidentId: string) => void;
 }) {
   const status = getStatusMeta(incident.status);
-  const responses = incident.verification?.responses ?? [];
-  const confirmed = responses.some(
-    (response) => response.response_value.toUpperCase() === 'I_AM_OK',
-  );
-  const pending =
-    incident.verification?.pending === true || incident.status.toUpperCase() === 'VERIFICATION_PENDING';
-  const attempts = incident.escalation_attempts ?? [];
-  const notificationResults = attempts.flatMap((attempt) => attempt.notifications ?? []);
-
   return (
     <div className="active-response">
       <div className="active-response__head">
@@ -69,48 +56,9 @@ function ActiveResponseSummary({
         </button>
       </div>
 
-      <dl className="active-response__grid">
-        <div>
-          <dt>Verification</dt>
-          <dd>
-            {pending
-              ? 'Pending response'
-              : confirmed
-                ? "Explicit 'I'm okay' recorded"
-                : statusValueOrFallback(incident.verification?.status)}
-          </dd>
-        </div>
-        <div>
-          <dt>Escalation attempts</dt>
-          <dd>{attempts.length > 0 ? attempts.length : 'None recorded'}</dd>
-        </div>
-        <div>
-          <dt>Notification results</dt>
-          <dd>
-            {notificationResults.length === 0 ? (
-              'None recorded'
-            ) : (
-              <span className="inline-badges">
-                {notificationResults.slice(0, 3).map((notification, index) => {
-                  const result = getNotificationMeta(notification.result);
-                  return <StatusBadge {...result} key={notification.notification_attempt_id ?? index} />;
-                })}
-              </span>
-            )}
-          </dd>
-        </div>
-      </dl>
-
-      <p className="detail-disclaimer">
-        <Icon name="shield" size={14} /> Status, verification, and notification results are read
-        from the backend. A simulated notification was not sent to a real recipient.
-      </p>
+      <p className="muted">The overview API reports status and timestamps only; verification and delivery details are not included.</p>
     </div>
   );
-}
-
-function statusValueOrFallback(value: string | null | undefined): string {
-  return value ? getStatusMeta(value).label : 'No active verification';
 }
 
 export function OverviewView({
@@ -158,26 +106,11 @@ export function OverviewView({
   const subject = subject_user_id ? { user_id: subject_user_id } : null;
   const latestReading = selectLatestReading(monitoring);
   const recentReadings = selectRecentReadings(monitoring);
-  const activeIncidents = overview.active_incidents ?? null;
-  const activeCount =
-    typeof overview.active_incident_count === 'number'
-      ? overview.active_incident_count
-      : activeIncidents
-        ? activeIncidents.length
-        : null;
-  const recentIncidents =
-    overview.recent_incidents && overview.recent_incidents.length > 0
-      ? overview.recent_incidents
-      : incidents;
-  const primaryIncident = activeIncidents?.[0] ?? recentIncidents[0] ?? null;
-  const detectionStatus = monitoring?.detection_status;
-  const detectionMeta = getStatusMeta(detectionStatus);
-  const monitoringMeta = getStatusMeta(monitoring?.status);
-  const stale = latestReading
-    ? isReadingStale(latestReading, monitoring?.stale_after_seconds)
-    : false;
-  const location =
-    overview.latest_location ?? recentIncidents.find((incident) => incident.location)?.location ?? null;
+  const recentIncidents = incidents;
+  const primaryIncident = overview.active_incident_id
+    ? incidents.find((incident) => incident.incident_id === overview.active_incident_id) ?? null
+    : null;
+  const monitoringMeta = getStatusMeta(monitoring.status);
 
   return (
     <>
@@ -210,47 +143,35 @@ export function OverviewView({
             <Icon name="alert" size={18} />
           </span>
           <p>
-            <strong>Escalated incident reported by the backend.</strong> Open the incident timeline
-            to review verification and notification results. No real emergency service is claimed
-            to have been contacted.
+            <strong>Escalated incident status reported by the backend.</strong> This API response
+            does not include notification delivery or acknowledgement details.
           </p>
         </div>
-      ) : primaryIncident?.status.toUpperCase() === 'VERIFICATION_PENDING' ? (
+      ) : primaryIncident?.status.toUpperCase() === 'PENDING_VERIFICATION' ? (
         <div className="notice notice--info">
           <span className="notice__icon">
             <Icon name="clock" size={18} />
           </span>
           <p>
-            <strong>Verification is pending.</strong> The monitored person has been asked to
-            confirm they are okay. A missing response is not a confirmation of safety.
+            <strong>Pending verification status reported by the backend.</strong> The incident API
+            does not return a verification response record.
           </p>
         </div>
-      ) : detectionStatus?.toUpperCase() === 'ANOMALY_DETECTED' && !primaryIncident ? (
-        <div className="notice notice--warning">
-          <span className="notice__icon">
-            <Icon name="incident" size={18} />
-          </span>
-          <p>
-            <strong>Anomaly detected.</strong> The detector reports an unusual pattern, but no
-            incident is currently reported by the backend. An anomaly is not a confirmed emergency.
-          </p>
-        </div>
-      ) : detectionStatus?.toUpperCase() === 'NORMAL' && (activeCount === 0 || primaryIncident === null) ? (
+      ) : monitoring.status.toUpperCase() === 'NORMAL' ? (
         <div className="notice notice--success notice--compact">
           <span className="notice__icon">
             <Icon name="check" size={16} />
           </span>
           <p>
-            <strong>Normal operation.</strong> The backend reports no active incident for this
-            monitored person.
+            <strong>No active incident reported.</strong> The backend monitoring status is NORMAL.
           </p>
         </div>
-      ) : detectionStatus ? null : (
+      ) : (
         <div className="notice notice--info notice--compact">
           <span className="notice__icon">
             <Icon name="activity" size={16} />
           </span>
-          <p>The backend did not report a current detection status.</p>
+          <p>The backend did not provide a detector status in its dashboard overview.</p>
         </div>
       )}
 
@@ -266,10 +187,7 @@ export function OverviewView({
         <StatCard
           aside={
             latestReading ? (
-              <StatusBadge
-                label={stale ? 'Stale' : 'Fresh'}
-                tone={stale ? 'warning' : 'success'}
-              />
+              <StatusBadge label="Freshness not reported" tone="neutral" />
             ) : null
           }
           hint={
@@ -288,21 +206,11 @@ export function OverviewView({
           value={formatHeartRate(latestReading?.heart_rate_bpm)}
         />
         <StatCard
-          aside={<StatusBadge {...detectionMeta} />}
-          hint="Backend detector decision"
-          icon="incident"
-          label="Detection status"
-          tone={
-            detectionStatus?.toUpperCase() === 'ANOMALY_DETECTED' ? 'amber' : 'teal'
-          }
-          value={detectionMeta.label}
-        />
-        <StatCard
-          hint={activeCount === null ? 'Not returned by the backend' : 'From the backend incident list'}
+          hint={overview.active_incident_id ?? 'No active incident ID returned'}
           icon="alert"
-          label="Active incidents"
-          tone={activeCount && activeCount > 0 ? 'red' : 'slate'}
-          value={activeCount === null ? 'Unavailable' : String(activeCount)}
+          label="Active incident"
+          tone={overview.active_incident_id ? 'red' : 'slate'}
+          value={overview.active_incident_id ? 'Reported' : 'None reported'}
         />
       </div>
 
@@ -331,14 +239,14 @@ export function OverviewView({
               <Icon name="chevronRight" size={15} />
             </button>
           }
-          subtitle="Latest reading and freshness reported by the backend."
+          subtitle="The backend overview returns the latest reading only; it does not report reading history or freshness."
           title="Latest reading"
         >
           <LatestReadingCard
             latestReading={latestReading}
             onViewHistory={() => onNavigate('monitoring')}
             recentReadings={recentReadings}
-            staleAfterSeconds={monitoring?.stale_after_seconds}
+            staleAfterSeconds={null}
           />
         </SectionCard>
       </div>
@@ -346,18 +254,18 @@ export function OverviewView({
       <div className="overview-layout">
         <div className="overview-layout__main">
           <SectionCard
-            subtitle="Verification and escalation state for the most relevant backend incident."
+            subtitle="The incident ID and status returned by the backend overview."
             title="Active response"
           >
             {primaryIncident ? (
-              <ActiveResponseSummary
+              <ActiveIncidentSummary
                 incident={primaryIncident}
                 onSelectIncident={onSelectIncident}
               />
             ) : (
               <EmptyState
                 compact
-                description="The backend does not currently report an active incident. This does not replace medical advice."
+                description="The backend overview did not return an active incident ID."
                 icon="check"
                 title="No active emergency response"
               />
@@ -401,42 +309,17 @@ export function OverviewView({
                 <Icon name="chevronRight" size={15} />
               </button>
             }
-            subtitle="Latest authorised snapshot, when available."
+            subtitle="Location is loaded from the authorised location endpoint."
             title="Location"
           >
             <LocationCard
-              emptyDescription="No location snapshot was returned in the dashboard overview. The dashboard does not discover location independently."
-              location={location}
+              emptyDescription="Open Location and support to load an authorised location snapshot."
+              location={null}
             />
           </SectionCard>
 
-          <SectionCard subtitle="How to read this dashboard." title="Status meaning">
-            <dl className="status-key">
-              <div>
-                <dt>
-                  <StatusBadge label="Anomaly detected" tone="warning" />
-                </dt>
-                <dd>An unusual pattern was detected. It is not a confirmed emergency.</dd>
-              </div>
-              <div>
-                <dt>
-                  <StatusBadge label="Verification pending" tone="info" />
-                </dt>
-                <dd>The person has been asked to confirm they are okay.</dd>
-              </div>
-              <div>
-                <dt>
-                  <StatusBadge label="False alarm resolved" tone="success" />
-                </dt>
-                <dd>The person confirmed they are okay and pending escalation was cancelled.</dd>
-              </div>
-              <div>
-                <dt>
-                  <StatusBadge label="Escalated" tone="danger" />
-                </dt>
-                <dd>Verification timed out and the backend initiated escalation.</dd>
-              </div>
-            </dl>
+          <SectionCard subtitle="Only fields returned by the current backend routes are displayed." title="Data availability">
+            <p className="muted">The current overview returns monitoring status, one latest reading, and an active incident reference. The incident routes return status and timestamps; they do not include detector evidence, verification responses, notifications, or timeline events.</p>
           </SectionCard>
         </div>
       </div>

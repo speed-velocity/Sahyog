@@ -1,308 +1,294 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../App';
 import {
-  escalatedDetail,
-  escalatedIncident,
-  escalatedOverview,
-  falseAlarmDetail,
-  falseAlarmIncident,
-  falseAlarmOverview,
+  INCIDENT_ID,
+  SECOND_SUBJECT_ID,
+  SUBJECT_ID,
   hospitalsResponse,
+  incidentResponse,
   locationSnapshot,
-  normalOverview,
-  pendingDetail,
-  pendingIncident,
-  pendingOverview,
+  overviewResponse,
   timestamp,
-} from './fixtures';
+} from './apiFixtures';
 import { installDashboardMock } from './mockApi';
 
-async function openView(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
-  await user.click(screen.getByRole('button', { name }));
+const authorized = (subjectId: string) => ({
+  subject_user_id: subjectId,
+  granted_at: timestamp(-1000),
+  revoked_at: null,
+});
+beforeEach(() => {
+  sessionStorage.setItem('sahyog_token', 'mock-jwt-token-for-testing');
+});
+
+function requestUrls(mock: ReturnType<typeof installDashboardMock>) {
+  return mock.fetchMock.mock.calls.map(([input]) => String(input));
 }
 
-describe('SAHYOG caregiver dashboard', () => {
-  it('renders normal operation with simulated reading data and no incidents', async () => {
-    installDashboardMock({ overview: normalOverview(), incidents: { incidents: [] } });
+async function navigate(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
+  await user.click(screen.getByRole('button', { name: label }));
+}
+
+describe('SAHYOG dashboard integration against backend response contracts', () => {
+  it('does not request protected resources without a session token', () => {
+    sessionStorage.removeItem('sahyog_token');
+    const mock = installDashboardMock({});
     render(<App />);
 
-    expect(await screen.findByText(/Normal operation/)).toBeInTheDocument();
-    expect(screen.getAllByText('Monitored person').length).toBeGreaterThan(0);
-    expect(await screen.findByText('No recent incidents')).toBeInTheDocument();
-    expect(screen.getAllByText(/Simulated/).length).toBeGreaterThan(0);
-    expect(screen.getByText('Active incidents')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Caregiver Login' })).toBeInTheDocument();
+    expect(mock.fetchMock).not.toHaveBeenCalled();
   });
 
-  it('renders the reading history chart and table in health monitoring', async () => {
+  it('posts URL-encoded credentials to the backend token route and stores its token', async () => {
+    sessionStorage.removeItem('sahyog_token');
     const user = userEvent.setup();
-    installDashboardMock({ overview: normalOverview(), incidents: { incidents: [] } });
+    const mock = installDashboardMock({ overview: overviewResponse(), incidents: [] });
     render(<App />);
 
-    await screen.findByText(/Normal operation/);
-    await openView(user, /^Health monitoring/);
+    await user.type(screen.getByLabelText('Username'), 'test-caregiver');
+    await user.type(screen.getByLabelText('Password'), 'test-password');
+    await user.click(screen.getByRole('button', { name: 'Sign In' }));
 
-    const chart = await screen.findByRole('img', { name: /readings between/i });
-    expect(chart).toBeInTheDocument();
-
-    const table = screen.getByRole('table');
-    expect(within(table).getAllByText(/bpm/).length).toBeGreaterThan(0);
-    expect(screen.getByText('Heart-rate trend')).toBeInTheDocument();
-    expect(screen.getAllByText('Reading history').length).toBeGreaterThan(0);
-    expect(screen.queryByText(/Only one reading was returned/)).not.toBeInTheDocument();
+    expect((await screen.findAllByText('78 bpm')).length).toBeGreaterThan(0);
+    expect(sessionStorage.getItem('sahyog_token')).toBe('mock-jwt-token-for-testing');
+    const loginRequest = mock.fetchMock.mock.calls.find(([input]) => String(input).endsWith('/auth/token'));
+    expect(loginRequest?.[1]?.method).toBe('POST');
+    expect(loginRequest?.[1]?.headers).toMatchObject({ 'Content-Type': 'application/x-www-form-urlencoded' });
+    expect(String(loginRequest?.[1]?.body)).toContain('username=test-caregiver');
   });
 
-  it('renders an escalated incident with pending verification and a simulated notification', async () => {
+  it('shows backend login errors', async () => {
+    sessionStorage.removeItem('sahyog_token');
     const user = userEvent.setup();
-    installDashboardMock({
-      overview: escalatedOverview(),
-      incidents: { incidents: [escalatedIncident()] },
-      detail: escalatedDetail(),
-      location: locationSnapshot(),
-      hospitals: hospitalsResponse(),
+    installDashboardMock({ loginStatus: 401, loginErrorBody: { detail: 'Incorrect username or password' } });
+    render(<App />);
+
+    await user.type(screen.getByLabelText('Username'), 'wrong-user');
+    await user.type(screen.getByLabelText('Password'), 'wrong-password');
+    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+
+    expect(await screen.findByText('Incorrect username or password')).toBeInTheDocument();
+    expect(sessionStorage.getItem('sahyog_token')).toBeNull();
+  });
+
+  it('sends the stored token as Bearer authorization to subject discovery', async () => {
+    const mock = installDashboardMock({ overview: overviewResponse(), incidents: [] });
+    render(<App />);
+
+    expect((await screen.findAllByText('78 bpm')).length).toBeGreaterThan(0);
+    const authorizationCall = mock.fetchMock.mock.calls.find(([input]) => String(input).endsWith('/authorizations/me'));
+    expect(new Headers(authorizationCall?.[1]?.headers).get('Authorization')).toBe('Bearer mock-jwt-token-for-testing');
+  });
+
+  it('handles zero authorized subjects without starting overview, incident, or detail polling', async () => {
+    const mock = installDashboardMock({ authorizedSubjects: [], overview: overviewResponse(), incidents: [] });
+    render(<App />);
+
+    expect(await screen.findByText('No subjects are authorized for this caregiver account.')).toBeInTheDocument();
+    expect(requestUrls(mock).some((url) => url.includes('/dashboard/overview'))).toBe(false);
+    expect(requestUrls(mock).some((url) => /\/incidents(?:\?|\/)/.test(new URL(url).pathname + new URL(url).search))).toBe(false);
+  });
+
+  it('automatically selects one authorized subject and sends the subject query parameter', async () => {
+    const mock = installDashboardMock({ overview: overviewResponse(), incidents: [] });
+    render(<App />);
+
+    expect((await screen.findAllByText('78 bpm')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('combobox', { name: 'Select monitored subject' })).not.toBeInTheDocument();
+    expect(requestUrls(mock).some((url) => url.includes(`subject_user_id=${SUBJECT_ID}`))).toBe(true);
+  });
+
+  it('shows a subject discovery error and retry action without starting data polling', async () => {
+    const mock = installDashboardMock({
+      authorizationsStatus: 503,
+      authorizationsErrorBody: { detail: 'Authorization service offline.' },
     });
     render(<App />);
 
-    expect(await screen.findByText(/Escalated incident reported by the backend/)).toBeInTheDocument();
-    await openView(user, /^Incidents/);
+    expect(await screen.findByText(/Authorization service offline/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry subject discovery' })).toBeInTheDocument();
+    expect(requestUrls(mock).some((url) => url.includes('/dashboard/overview'))).toBe(false);
+    expect(requestUrls(mock).some((url) => new URL(url).pathname.endsWith('/incidents'))).toBe(false);
+  });
 
+  it('retries subject discovery and starts monitoring after discovery succeeds', async () => {
+    const user = userEvent.setup();
+    const mock = installDashboardMock({
+      authorizationsStatus: 503,
+      authorizationsErrorBody: { detail: 'Authorization service offline.' },
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/Authorization service offline/)).toBeInTheDocument();
+    mock.update({ authorizationsStatus: undefined, overview: overviewResponse(), incidents: [] });
+    await user.click(screen.getByRole('button', { name: 'Retry subject discovery' }));
+
+    expect((await screen.findAllByText('78 bpm')).length).toBeGreaterThan(0);
+    expect(requestUrls(mock).filter((url) => url.endsWith('/authorizations/me'))).toHaveLength(2);
+  });
+
+  it('shows an authorization error for a non-caregiver session', async () => {
+    sessionStorage.setItem('sahyog_token', 'mock-subject-token');
+    const mock = installDashboardMock({});
+    render(<App />);
+
+    expect(await screen.findByText(/Only caregivers may list authorized subjects/)).toBeInTheDocument();
+    expect(requestUrls(mock).some((url) => url.includes('/dashboard/overview'))).toBe(false);
+  });
+
+  it('does not expose subject UUIDs in the visible selector and suppresses old subject data on switch', async () => {
+    const user = userEvent.setup();
+    const firstIncident = incidentResponse('ESCALATED', SUBJECT_ID, INCIDENT_ID);
+    const secondIncidentId = 'c3d4e5f6-3333-4333-8333-333333333333';
+    const mock = installDashboardMock({
+      authorizedSubjects: [authorized(SUBJECT_ID), authorized(SECOND_SUBJECT_ID)],
+      overviewBySubject: {
+        [SUBJECT_ID]: overviewResponse(SUBJECT_ID, { activeIncident: INCIDENT_ID }),
+        [SECOND_SUBJECT_ID]: overviewResponse(SECOND_SUBJECT_ID, { bpm: 91 }),
+      },
+      incidentsBySubject: {
+        [SUBJECT_ID]: [firstIncident],
+        [SECOND_SUBJECT_ID]: [incidentResponse('RESOLVED_FALSE_ALARM', SECOND_SUBJECT_ID, secondIncidentId)],
+      },
+      detail: firstIncident,
+    });
+    render(<App />);
+
+    const selector = await screen.findByRole('combobox', { name: 'Select monitored subject' });
+    expect(within(selector).getByRole('option', { name: 'Authorized subject 1' })).toBeInTheDocument();
+    expect(selector.textContent).not.toContain(SUBJECT_ID);
+    await user.selectOptions(selector, SUBJECT_ID);
+    expect((await screen.findAllByText('78 bpm')).length).toBeGreaterThan(0);
+
+    await user.selectOptions(selector, SECOND_SUBJECT_ID);
+    expect((await screen.findAllByText('91 bpm')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('78 bpm')).not.toBeInTheDocument();
+    expect(screen.queryByText(INCIDENT_ID)).not.toBeInTheDocument();
+    expect(requestUrls(mock).some((url) => url.includes(`subject_user_id=${SECOND_SUBJECT_ID}`))).toBe(true);
+  });
+
+  it('renders only status and timestamps returned by incident detail', async () => {
+    const user = userEvent.setup();
+    const incident = incidentResponse('ESCALATED');
+    installDashboardMock({
+      overview: overviewResponse(SUBJECT_ID, { activeIncident: incident.incident_id }),
+      incidents: [incident],
+      detail: incident,
+    });
+    render(<App />);
+
+    await screen.findAllByText('78 bpm');
+    await navigate(user, /^Incidents/);
     expect(await screen.findByRole('heading', { name: 'Incident timeline' })).toBeInTheDocument();
-    expect(screen.getAllByText('Escalated').length).toBeGreaterThan(0);
-    expect(screen.getByText(/No response recorded/)).toBeInTheDocument();
-    expect(
-      screen.getByText('Simulated notification — no real message or call was delivered.'),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Recipient: caregiver-demo-1/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Verification timeout/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('High').length).toBeGreaterThan(0);
-  });
-
-  it('renders a false-alarm resolution with an explicit confirmation and no escalation', async () => {
-    const user = userEvent.setup();
-    installDashboardMock({
-      overview: falseAlarmOverview(),
-      incidents: { incidents: [falseAlarmIncident()] },
-      detail: falseAlarmDetail(),
-    });
-    render(<App />);
-
-    await screen.findByText(/Normal operation/);
-    await openView(user, /^Incidents/);
-
-    expect(await screen.findByRole('heading', { name: 'Incident timeline' })).toBeInTheDocument();
-    expect(screen.getAllByText('False alarm resolved').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Explicit confirmation recorded/)).toBeInTheDocument();
-    expect(screen.getByText("I'm okay")).toBeInTheDocument();
-    expect(screen.getByText(/No escalation attempts have been recorded/)).toBeInTheDocument();
-    expect(screen.queryByText(/No response recorded/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Escalated incident reported by the backend/)).not.toBeInTheDocument();
-  });
-
-  it('distinguishes verification pending from an explicit confirmation', async () => {
-    const user = userEvent.setup();
-    installDashboardMock({
-      overview: pendingOverview(),
-      incidents: { incidents: [pendingIncident()] },
-      detail: pendingDetail(),
-    });
-    render(<App />);
-
-    expect(await screen.findByText(/Verification is pending/)).toBeInTheDocument();
-    await openView(user, /^Incidents/);
-
-    await screen.findByRole('heading', { name: 'Incident timeline' });
-    expect(screen.getAllByText('Verification pending').length).toBeGreaterThan(0);
-    expect(screen.getByText(/No response recorded/)).toBeInTheDocument();
-    expect(screen.getByText(/not a confirmation that the person is safe/)).toBeInTheDocument();
+    expect(screen.getByText(/does not include verification records/)).toBeInTheDocument();
+    expect(screen.queryByText(/Recipient:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Explicit confirmation recorded/)).not.toBeInTheDocument();
   });
 
-  it('shows backend errors without fabricating data, then recovers on retry', async () => {
+  it('handles the flat backend overview and does not invent detector, history, or freshness fields', async () => {
     const user = userEvent.setup();
-    const mock = installDashboardMock({
-      overviewStatus: 503,
-      incidentsStatus: 503,
-      overviewErrorBody: {
-        error: { code: 'SERVICE_UNAVAILABLE', message: 'The backend is restarting.' },
+    installDashboardMock({ overview: overviewResponse(), incidents: [] });
+    render(<App />);
+
+    expect((await screen.findAllByText('78 bpm')).length).toBeGreaterThan(0);
+    expect(screen.getByText('Monitoring status')).toBeInTheDocument();
+    expect(screen.getByText('No active incident reported.')).toBeInTheDocument();
+    expect(screen.queryByText(/ANOMALY_DETECTED/)).not.toBeInTheDocument();
+
+    await navigate(user, /^Health monitoring/);
+    expect(screen.getByText(/no reading-history endpoint is available/i)).toBeInTheDocument();
+    expect(screen.getByText(/Freshness not reported/)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('keeps location and hospital data scoped to the selected subject', async () => {
+    const user = userEvent.setup();
+    const secondLocation = {
+      ...locationSnapshot(SECOND_SUBJECT_ID),
+      latitude: 19.076,
+      longitude: 72.8777,
+    };
+    installDashboardMock({
+      authorizedSubjects: [authorized(SUBJECT_ID), authorized(SECOND_SUBJECT_ID)],
+      overviewBySubject: {
+        [SUBJECT_ID]: overviewResponse(SUBJECT_ID),
+        [SECOND_SUBJECT_ID]: overviewResponse(SECOND_SUBJECT_ID, { bpm: 91 }),
       },
-      incidentsErrorBody: {
-        error: { code: 'SERVICE_UNAVAILABLE', message: 'The backend is restarting.' },
+      incidentsBySubject: { [SUBJECT_ID]: [], [SECOND_SUBJECT_ID]: [] },
+      locationBySubject: {
+        [SUBJECT_ID]: locationSnapshot(SUBJECT_ID),
+        [SECOND_SUBJECT_ID]: secondLocation,
       },
+      hospitals: hospitalsResponse(),
     });
     render(<App />);
 
-    expect(await screen.findByText('The backend is restarting.')).toBeInTheDocument();
-    expect(screen.queryByText('78 bpm')).not.toBeInTheDocument();
+    const selector = await screen.findByRole('combobox', { name: 'Select monitored subject' });
+    await user.selectOptions(selector, SUBJECT_ID);
+    await user.click(screen.getByRole('button', { name: /^Location & support/ }));
+    expect(await screen.findByText('18.52040, 73.85670')).toBeInTheDocument();
 
-    mock.update({
-      overview: normalOverview(),
-      incidents: { incidents: [] },
-      overviewStatus: 200,
-      incidentsStatus: 200,
-    });
-    await user.click(screen.getByRole('button', { name: /Retry/ }));
-
-    expect(await screen.findByText(/Normal operation/)).toBeInTheDocument();
-    expect(screen.getAllByText('78 bpm').length).toBeGreaterThan(0);
+    await user.selectOptions(selector, SECOND_SUBJECT_ID);
+    expect(await screen.findByText('19.07600, 72.87770')).toBeInTheDocument();
+    expect(screen.queryByText('18.52040, 73.85670')).not.toBeInTheDocument();
   });
 
-  it('reports an empty reading state honestly', async () => {
-    const overview = normalOverview();
-    overview.monitoring = {
-      ...overview.monitoring,
-      latest_reading: null,
-      recent_readings: [],
-    };
-    installDashboardMock({ overview, incidents: { incidents: [] } });
+  it('does not show a location or request hospitals when the backend has no snapshot', async () => {
+    const user = userEvent.setup();
+    const mock = installDashboardMock({ overview: overviewResponse(), incidents: [] });
     render(<App />);
 
-    expect((await screen.findAllByText('No readings available')).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
-    expect(screen.queryByText(/\d+ bpm/)).not.toBeInTheDocument();
+    await screen.findAllByText('78 bpm');
+    await navigate(user, /^Location & support/);
+    expect(await screen.findByText('Location unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Hospital lookup unavailable')).toBeInTheDocument();
+    expect(requestUrls(mock).some((url) => url.includes('/hospitals/nearby'))).toBe(false);
   });
 
-  it('displays unknown backend status values verbatim instead of inventing a state', async () => {
-    const overview = normalOverview();
-    overview.monitoring = {
-      ...overview.monitoring,
-      status: 'PAUSED',
-      detection_status: 'PAUSED',
-    };
-    installDashboardMock({ overview, incidents: { incidents: [] } });
-    render(<App />);
-
-    expect(
-      (await screen.findAllByText('PAUSED', { selector: '.stat-card__value' })).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getAllByText('PAUSED').length).toBeGreaterThan(0);
-    expect(screen.queryByText(/Normal operation/)).not.toBeInTheDocument();
-  });
-
-  it('renders location and seeded nearby hospitals with explicit demo labelling', async () => {
+  it('uses the backend hospital response and displays its disclaimer', async () => {
     const user = userEvent.setup();
     installDashboardMock({
-      overview: normalOverview(),
-      incidents: { incidents: [] },
+      overview: overviewResponse(),
+      incidents: [],
       location: locationSnapshot(),
       hospitals: hospitalsResponse(),
     });
     render(<App />);
 
-    await screen.findByText(/Normal operation/);
-    await openView(user, /^Location & support/);
-
+    await screen.findAllByText('78 bpm');
+    await navigate(user, /^Location & support/);
     expect(await screen.findByText('SAHYOG Demo General Hospital')).toBeInTheDocument();
     expect(screen.getByText('1.2 km')).toBeInTheDocument();
-    expect(screen.getByText('3.4 km')).toBeInTheDocument();
-    expect(screen.getAllByText('Seeded demo directory').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/No hospital has been contacted/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('18.52040, 73.85670').length).toBeGreaterThan(0);
-    expect(screen.getByText('Source: Location service snapshot')).toBeInTheDocument();
+    expect(screen.getByText(/availability is not confirmed/)).toBeInTheDocument();
   });
 
-  it('shows location and hospital unavailability without crashing', async () => {
-    const user = userEvent.setup();
-    installDashboardMock({ overview: normalOverview(), incidents: { incidents: [] } });
-    render(<App />);
-
-    await screen.findByText(/Normal operation/);
-    await openView(user, /^Location & support/);
-
-    expect(await screen.findByText('Location unavailable')).toBeInTheDocument();
-    expect(screen.getByText('Hospital lookup unavailable')).toBeInTheDocument();
-    expect(screen.queryByText('SAHYOG Demo General Hospital')).not.toBeInTheDocument();
-  });
-
-  it('shows a hospital-directory error while keeping the location visible', async () => {
-    const user = userEvent.setup();
-    installDashboardMock({
-      overview: normalOverview(),
-      incidents: { incidents: [] },
-      location: locationSnapshot(),
-      hospitalsStatus: 503,
-      hospitalsErrorBody: {
-        error: { code: 'HOSPITAL_DIRECTORY_UNAVAILABLE', message: 'Directory offline.' },
-      },
-    });
-    render(<App />);
-
-    await screen.findByText(/Normal operation/);
-    await openView(user, /^Location & support/);
-
-    expect(await screen.findByText('Hospital directory unavailable')).toBeInTheDocument();
-    expect(screen.getByText('Directory offline.')).toBeInTheDocument();
-    expect(screen.getAllByText('18.52040, 73.85670').length).toBeGreaterThan(0);
-  });
-
-  it('shows a dedicated authentication-expired state on 401 without fabricating data', async () => {
-    installDashboardMock({
-      overviewStatus: 401,
-      incidentsStatus: 401,
-      overviewErrorBody: {
-        error: { code: 'UNAUTHORIZED', message: 'Caregiver session expired.' },
-      },
-      incidentsErrorBody: {
-        error: { code: 'UNAUTHORIZED', message: 'Caregiver session expired.' },
-      },
-    });
-    render(<App />);
-
-    expect(await screen.findByText('Dashboard access expired')).toBeInTheDocument();
-    expect(screen.getAllByText('Caregiver session expired.').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/No data was fabricated/).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/\d+ bpm/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Normal operation/)).not.toBeInTheDocument();
-  });
-
-  it('marks an old reading as stale in the monitoring view', async () => {
-    const user = userEvent.setup();
-    const overview = normalOverview();
-    const staleReading = {
-      ...overview.monitoring?.latest_reading!,
-      reading_id: 'read-stale',
-      observed_at: timestamp(-600),
-      is_stale: false,
-    };
-    overview.monitoring = {
-      ...overview.monitoring,
-      latest_reading: staleReading,
-      recent_readings: [staleReading],
-      stale_after_seconds: 120,
-    };
-    installDashboardMock({ overview, incidents: { incidents: [] } });
-    render(<App />);
-
-    await screen.findByText(/Normal operation/);
-    await openView(user, /^Health monitoring/);
-
-    expect(await screen.findByText(/stale reading/)).toBeInTheDocument();
-    expect(screen.getAllByText('Stale').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Fresh')).not.toBeInTheDocument();
-  });
-
-  it('replaces stale incident data after a repeated demo run refresh', async () => {
+  it('stops protected polling after logout and clears all subject-specific state', async () => {
     const user = userEvent.setup();
     const mock = installDashboardMock({
-      overview: escalatedOverview(),
-      incidents: { incidents: [escalatedIncident()] },
-      detail: escalatedDetail(),
+      overview: overviewResponse(SUBJECT_ID, { activeIncident: INCIDENT_ID }),
+      incidents: [incidentResponse('ESCALATED')],
+      detail: incidentResponse('ESCALATED'),
+      location: locationSnapshot(),
     });
     render(<App />);
 
-    expect(await screen.findByText(/Escalated incident reported by the backend/)).toBeInTheDocument();
+    expect((await screen.findAllByText('78 bpm')).length).toBeGreaterThan(0);
+    const beforeLogout = requestUrls(mock).length;
+    await user.click(screen.getByRole('button', { name: 'Log out' }));
+    expect(sessionStorage.getItem('sahyog_token')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Caregiver Login' })).toBeInTheDocument();
+    expect(screen.queryByText('78 bpm')).not.toBeInTheDocument();
+    expect(screen.queryByText(INCIDENT_ID)).not.toBeInTheDocument();
+    await waitFor(() => expect(requestUrls(mock).length).toBe(beforeLogout));
+  });
 
-    mock.update({
-      overview: normalOverview(),
-      incidents: { incidents: [] },
-      detail: undefined,
-    });
-    await user.click(screen.getByRole('button', { name: 'Refresh dashboard data' }));
+  it('rejects a malformed overview rather than interpreting a different response shape', async () => {
+    const mock = installDashboardMock({ overview: { overview: overviewResponse() }, incidents: [] });
+    render(<App />);
 
-    expect(await screen.findByText(/Normal operation/)).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.queryByText(/Escalated incident reported by the backend/)).not.toBeInTheDocument();
-    });
-    expect(screen.queryByLabelText(/active incidents/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/latest reading response was not readable/i)).toBeInTheDocument();
+    expect(requestUrls(mock).some((url) => url.includes(`subject_user_id=${SUBJECT_ID}`))).toBe(true);
   });
 });

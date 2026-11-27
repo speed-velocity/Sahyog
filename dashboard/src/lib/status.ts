@@ -26,20 +26,25 @@ const STATUS_META: Record<string, StatusMeta> = {
     tone: 'warning',
     description: 'An unusual pattern was detected. This is not a confirmed emergency.',
   },
-  VERIFICATION_PENDING: {
+  PENDING_VERIFICATION: {
     label: 'Verification pending',
     tone: 'info',
     description: 'The monitored person has been asked to confirm they are okay.',
   },
-  FALSE_ALARM_RESOLVED: {
-    label: 'False alarm resolved',
-    tone: 'success',
-    description: 'The person confirmed they are okay and pending escalation was cancelled.',
+  ESCALATION_IN_PROGRESS: {
+    label: 'Escalation in progress',
+    tone: 'warning',
+    description: 'The backend is escalating the incident.',
   },
   ESCALATED: {
     label: 'Escalated',
     tone: 'danger',
     description: 'Verification received no response and the backend initiated escalation.',
+  },
+  RESOLVED_FALSE_ALARM: {
+    label: 'Resolved false alarm',
+    tone: 'success',
+    description: 'The person confirmed they are okay and pending escalation was cancelled.',
   },
   RESOLVED: {
     label: 'Resolved',
@@ -66,20 +71,30 @@ const SEVERITY_META: Record<string, StatusMeta> = {
 };
 
 const NOTIFICATION_META: Record<string, StatusMeta> = {
-  SIMULATED: {
-    label: 'Simulated',
-    tone: 'accent',
-    description: 'Recorded by the demo notifier. No real message or call was delivered.',
-  },
-  SENT: {
+  ACCEPTED: {
     label: 'Provider accepted',
     tone: 'success',
     description: 'The provider accepted the request. Delivery is not confirmed.',
+  },
+  DELIVERED: {
+    label: 'Delivered',
+    tone: 'success',
+    description: 'The backend or provider reported delivery.',
   },
   FAILED: {
     label: 'Failed',
     tone: 'danger',
     description: 'The notification attempt failed or was not accepted by a provider.',
+  },
+  UNKNOWN: {
+    label: 'Unknown',
+    tone: 'neutral',
+    description: 'The outcome of the notification is unknown.',
+  },
+  SIMULATED: {
+    label: 'Simulated',
+    tone: 'accent',
+    description: 'Recorded by the demo notifier. No real message or call was delivered.',
   },
 };
 

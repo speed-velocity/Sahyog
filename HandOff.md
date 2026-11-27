@@ -467,13 +467,13 @@ Utkarsh must record important architecture and integration decisions here.
 
 | Date | Decision/Issue | Owner | Resolution |
 |---|---|---|---|
-| To be filled | Initial project contract review | Utkarsh | Pending |
-| To be filled | Health-reading schema confirmed | Prasiddh + Shubhankar | Pending |
-| To be filled | Incident lifecycle confirmed | Shubhankar + Utkarsh | Pending |
-| To be filled | Database schema confirmed | Utkarsh | Pending |
-| To be filled | Mobile API integration confirmed | Aditya + Shubhankar | Pending |
-| To be filled | Dashboard API integration confirmed | Vaishnavi + Shubhankar | Pending |
-| To be filled | End-to-end demo passed | All | Pending |
+| 2026-11-26 | Initial project contract review | Utkarsh | Completed. All 5 roles aligned on PRD/System Design. |
+| 2026-11-27 | Health-reading schema confirmed | Prasiddh + Shubhankar | Completed. Canonical ReadingRequest schema in place. |
+| 2026-11-27 | Incident lifecycle confirmed | Shubhankar + Utkarsh | Completed. Verification timeout and mock notifier wired. |
+| 2026-11-27 | Database schema confirmed | Utkarsh | Completed. location_snapshots (25c1af2fe01c) implemented and tested. |
+| 2026-11-27 | Mobile API integration confirmed | Aditya + Shubhankar | Completed. Models, reading transport, and location sender aligned. |
+| 2026-11-28 | Dashboard API integration confirmed | Vaishnavi + Shubhankar | Completed. React dashboard passes 22 vitest tests and builds clean. |
+| 2026-11-28 | End-to-end demo passed | All | Completed. All 3 scenarios (NORMAL, TRUE_ANOMALY, FALSE_ALARM) verified. |
 
 ## 11. Final Definition of Integrated
 
@@ -973,13 +973,13 @@ Utkarsh must record important architecture and integration decisions here.
 
 | Date | Decision/Issue | Owner | Resolution |
 |---|---|---|---|
-| To be filled | Initial project contract review | Utkarsh | Pending |
-| To be filled | Health-reading schema confirmed | Prasiddh + Shubhankar | Pending |
-| To be filled | Incident lifecycle confirmed | Shubhankar + Utkarsh | Pending |
-| To be filled | Database schema confirmed | Utkarsh | Pending |
-| To be filled | Mobile API integration confirmed | Aditya + Shubhankar | Pending |
-| To be filled | Dashboard API integration confirmed | Vaishnavi + Shubhankar | Pending |
-| To be filled | End-to-end demo passed | All | Pending |
+| 2026-11-26 | Initial project contract review | Utkarsh | Completed. All 5 roles aligned on PRD/System Design. |
+| 2026-11-27 | Health-reading schema confirmed | Prasiddh + Shubhankar | Completed. Canonical ReadingRequest schema in place. |
+| 2026-11-27 | Incident lifecycle confirmed | Shubhankar + Utkarsh | Completed. Verification timeout and mock notifier wired. |
+| 2026-11-27 | Database schema confirmed | Utkarsh | Completed. location_snapshots (25c1af2fe01c) implemented and tested. |
+| 2026-11-27 | Mobile API integration confirmed | Aditya + Shubhankar | Completed. Models, reading transport, and location sender aligned. |
+| 2026-11-28 | Dashboard API integration confirmed | Vaishnavi + Shubhankar | Completed. React dashboard passes 22 vitest tests and builds clean. |
+| 2026-11-28 | End-to-end demo passed | All | Completed. All 3 scenarios (NORMAL, TRUE_ANOMALY, FALSE_ALARM) verified. |
 
 ## 11. Final Definition of Integrated
 

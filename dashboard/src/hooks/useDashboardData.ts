@@ -10,14 +10,50 @@ import {
 import type { LocationSnapshot } from '../api/types';
 import { usePollingResource } from './usePollingResource';
 
-export function useDashboardData() {
-  const overview = usePollingResource(fetchOverview, { intervalMs: POLL_INTERVAL_MS });
-  const incidents = usePollingResource(fetchIncidents, { intervalMs: POLL_INTERVAL_MS });
+
+export function useDashboardData(
+  subjectUserId: string | null = null,
+  isAuthenticated: boolean = false,
+) {
+  const enabled = isAuthenticated && Boolean(subjectUserId);
+
+  const loadOverview = useCallback(
+    (signal: AbortSignal) => {
+      if (!subjectUserId) {
+        return Promise.reject(new Error('No monitored subject selected.'));
+      }
+      return fetchOverview(signal, subjectUserId);
+    },
+    [subjectUserId],
+  );
+
+  const loadIncidents = useCallback(
+    (signal: AbortSignal) => {
+      if (!subjectUserId) {
+        return Promise.reject(new Error('No monitored subject selected.'));
+      }
+      return fetchIncidents(signal, subjectUserId);
+    },
+    [subjectUserId],
+  );
+
+  const overview = usePollingResource(loadOverview, {
+    intervalMs: POLL_INTERVAL_MS,
+    enabled,
+    resetKey: subjectUserId ?? 'none',
+  });
+
+  const incidents = usePollingResource(loadIncidents, {
+    intervalMs: POLL_INTERVAL_MS,
+    enabled,
+    resetKey: subjectUserId ?? 'none',
+  });
 
   return { overview, incidents };
 }
 
-export function useIncidentDetail(incidentId: string | null) {
+
+export function useIncidentDetail(incidentId: string | null, isEnabled = true) {
   const load = useCallback(
     (signal: AbortSignal) => {
       if (!incidentId) {
@@ -30,8 +66,8 @@ export function useIncidentDetail(incidentId: string | null) {
 
   return usePollingResource(load, {
     intervalMs: POLL_INTERVAL_MS,
-    enabled: incidentId !== null,
-    resetKey: incidentId ?? 'none',
+    enabled: isEnabled && incidentId !== null,
+    resetKey: `${isEnabled ? 'enabled' : 'disabled'}:${incidentId ?? 'none'}`,
   });
 }
 

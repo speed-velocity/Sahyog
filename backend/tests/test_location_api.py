@@ -7,8 +7,13 @@ import pytest
 from backend.app.api.location import get_location_service, router
 from backend.app.core.auth import require_active_principal
 from backend.app.db.session import get_db
+from backend.app.models.auth import CaregiverAuthorization
+from backend.app.models.location import LocationSnapshotRecord
 from backend.app.schemas.auth import AuthenticatedPrincipal, UserRole
-from backend.app.services.location import LocationService
+from backend.app.services.location import (
+    LocationService,
+    LocationUpdateRequest,
+)
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -16,8 +21,75 @@ SUBJECT_USER_ID = uuid4()
 
 
 class FakeLocationSession:
+    def __init__(
+        self,
+        *,
+        fail_on_flush: bool = False,
+        fail_on_commit: bool = False,
+        missing_demo_run: bool = False,
+        missing_incident: bool = False,
+    ) -> None:
+        self.committed = False
+        self.rolled_back = False
+        self.added: list[object] = []
+        self.location_records: list[LocationSnapshotRecord] = []
+        self.fail_on_flush = fail_on_flush
+        self.fail_on_commit = fail_on_commit
+        self.missing_demo_run = missing_demo_run
+        self.missing_incident = missing_incident
+        self.scalar_query_count = 0
+
     def get(self, _model, _identifier):
-        return type("OwnedRecord", (), {"subject_user_id": SUBJECT_USER_ID})()
+        return type(
+            "OwnedRecord",
+            (),
+            {"subject_user_id": SUBJECT_USER_ID, "demo_run_id": None},
+        )()
+
+    def scalar(self, stmt):
+        self.scalar_query_count += 1
+        for desc in getattr(stmt, "column_descriptions", []):
+            entity = desc.get("entity") or desc.get("type")
+            if entity is LocationSnapshotRecord:
+                return self.location_records[-1] if self.location_records else None
+            if entity is CaregiverAuthorization:
+                return None
+            type_name = str(entity)
+            if (
+                "demo_runs" in type_name or "DemoRun" in type_name
+            ) and self.missing_demo_run:
+                return None
+            if (
+                "incidents" in type_name or "Incident" in type_name
+            ) and self.missing_incident:
+                return None
+        return type(
+            "OwnedRecord",
+            (),
+            {
+                "subject_user_id": SUBJECT_USER_ID,
+                "current_generation": 1,
+                "demo_run_id": None,
+                "incident_id": uuid4(),
+            },
+        )()
+
+    def add(self, obj: object) -> None:
+        self.added.append(obj)
+        if isinstance(obj, LocationSnapshotRecord):
+            self.location_records.append(obj)
+
+    def flush(self) -> None:
+        if self.fail_on_flush:
+            raise RuntimeError("Simulated DB flush error")
+
+    def commit(self) -> None:
+        if self.fail_on_commit:
+            raise RuntimeError("Simulated DB commit error")
+        self.committed = True
+
+    def rollback(self) -> None:
+        self.rolled_back = True
 
 
 class FixedClock:
@@ -220,3 +292,363 @@ def test_hospital_directory_failure_returns_503() -> None:
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "HOSPITAL_DIRECTORY_UNAVAILABLE"
+
+
+# ---------------------------------------------------------------------------
+# Focused PostgreSQL Location Persistence & Read-Through Tests
+# ---------------------------------------------------------------------------
+
+
+def _build_test_client(
+    service: LocationService | None = None,
+    session: FakeLocationSession | None = None,
+    principal: AuthenticatedPrincipal | None = None,
+) -> tuple[TestClient, LocationService, FakeLocationSession]:
+    clock = FixedClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+    svc = service or LocationService(clock=clock)
+    sess = session or FakeLocationSession()
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_location_service] = lambda: svc
+    app.dependency_overrides[require_active_principal] = lambda: (
+        principal
+        or AuthenticatedPrincipal(user_id=SUBJECT_USER_ID, role=UserRole.SUBJECT)
+    )
+    app.dependency_overrides[get_db] = lambda: sess
+    return TestClient(app), svc, sess
+
+
+def test_successful_update_shares_uuid_and_timestamp_and_commits() -> None:
+    client, service, session = _build_test_client()
+    incident_id = uuid4()
+
+    response = client.post(
+        "/api/v1/location/updates",
+        json={
+            "subject_user_id": str(SUBJECT_USER_ID),
+            "incident_id": str(incident_id),
+            "latitude": 12.9716,
+            "longitude": 77.5946,
+            "accuracy_meters": 10.0,
+            "captured_at": "2026-01-01T11:59:00Z",
+            "source_kind": "GPS",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+
+    # 1. Assert DB transaction was committed and record added
+    assert session.committed is True
+    assert session.rolled_back is False
+    assert len(session.location_records) == 1
+    db_record = session.location_records[0]
+
+    # 2. Assert exact snapshot UUID and received_at are shared
+    assert body["location_snapshot_id"] == str(db_record.location_id)
+    assert datetime.fromisoformat(body["received_at"]) == db_record.received_at
+
+    # 3. Assert in-memory cache was published with the exact same snapshot
+    cached = service.latest_for_subject(SUBJECT_USER_ID)
+    assert cached is not None
+    assert str(cached.location_snapshot_id) == body["location_snapshot_id"]
+    assert cached.received_at == db_record.received_at
+
+
+def test_persistence_failure_on_flush_rolls_back_and_leaves_cache_unmodified() -> None:
+    clock = FixedClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+    service = LocationService(clock=clock)
+
+    # Pre-populate cache with an initial snapshot
+    initial_update = LocationUpdateRequest(
+        subject_user_id=SUBJECT_USER_ID,
+        latitude=10.0,
+        longitude=10.0,
+        captured_at=datetime(2026, 1, 1, 11, 50, tzinfo=UTC),
+        source_kind="INITIAL",
+    )
+    initial_snap = service.record_location(initial_update)
+
+    session = FakeLocationSession(fail_on_flush=True)
+    client, _, _ = _build_test_client(service=service, session=session)
+
+    response = client.post(
+        "/api/v1/location/updates",
+        json={
+            "subject_user_id": str(SUBJECT_USER_ID),
+            "latitude": 20.0,
+            "longitude": 20.0,
+            "captured_at": "2026-01-01T11:59:00Z",
+            "source_kind": "NEW_FAILED",
+        },
+    )
+
+    # Assert HTTP 500 with generic error envelope (no internal exception leakage)
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "LOCATION_PERSISTENCE_FAILED"
+    assert "Simulated DB flush error" not in response.text
+
+    # Assert rollback occurred
+    assert session.rolled_back is True
+    assert session.committed is False
+
+    # Assert cache was NOT updated; initial snapshot remains intact
+    cached = service.latest_for_subject(SUBJECT_USER_ID)
+    assert cached is not None
+    assert cached.location_snapshot_id == initial_snap.location_snapshot_id
+    assert cached.source_kind == "INITIAL"
+
+
+def test_persistence_failure_on_commit_rolls_back_and_leaves_cache_unmodified() -> None:
+    clock = FixedClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+    service = LocationService(clock=clock)
+
+    session = FakeLocationSession(fail_on_commit=True)
+    client, _, _ = _build_test_client(service=service, session=session)
+
+    response = client.post(
+        "/api/v1/location/updates",
+        json={
+            "subject_user_id": str(SUBJECT_USER_ID),
+            "latitude": 25.0,
+            "longitude": 25.0,
+            "captured_at": "2026-01-01T11:59:00Z",
+            "source_kind": "COMMIT_FAIL",
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "LOCATION_PERSISTENCE_FAILED"
+    assert session.rolled_back is True
+
+    # Cache must be completely empty since no commit succeeded
+    assert service.latest_for_subject(SUBJECT_USER_ID) is None
+
+
+def test_scope_error_missing_demo_run_returns_400_and_rolls_back() -> None:
+    session = FakeLocationSession(missing_demo_run=True)
+    client, service, _ = _build_test_client(session=session)
+
+    response = client.post(
+        "/api/v1/location/updates",
+        json={
+            "subject_user_id": str(SUBJECT_USER_ID),
+            "demo_run_id": str(uuid4()),
+            "latitude": 15.0,
+            "longitude": 15.0,
+            "captured_at": "2026-01-01T11:59:00Z",
+            "source_kind": "TEST",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "LOCATION_SCOPE_INVALID"
+    assert session.rolled_back is True
+    assert service.latest_for_subject(SUBJECT_USER_ID) is None
+
+
+def test_scope_error_missing_incident_returns_400_and_rolls_back() -> None:
+    session = FakeLocationSession(missing_incident=True)
+    client, service, _ = _build_test_client(session=session)
+
+    response = client.post(
+        "/api/v1/location/updates",
+        json={
+            "subject_user_id": str(SUBJECT_USER_ID),
+            "incident_id": str(uuid4()),
+            "latitude": 15.0,
+            "longitude": 15.0,
+            "captured_at": "2026-01-01T11:59:00Z",
+            "source_kind": "TEST",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "LOCATION_SCOPE_INVALID"
+    assert session.rolled_back is True
+    assert service.latest_for_subject(SUBJECT_USER_ID) is None
+
+
+def test_read_through_cache_hit_does_not_query_database() -> None:
+    clock = FixedClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+    service = LocationService(clock=clock)
+    service.record_location(
+        LocationUpdateRequest(
+            subject_user_id=SUBJECT_USER_ID,
+            latitude=11.1,
+            longitude=22.2,
+            captured_at=datetime(2026, 1, 1, 11, 58, tzinfo=UTC),
+            source_kind="CACHE_HIT",
+        )
+    )
+
+    session = FakeLocationSession()
+    client, _, _ = _build_test_client(service=service, session=session)
+
+    response = client.get(
+        "/api/v1/location/latest",
+        params={"subject_user_id": str(SUBJECT_USER_ID)},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source_kind"] == "CACHE_HIT"
+    # Scalar query count should be 0 because cache hit resolved the request
+    assert session.scalar_query_count == 0
+
+
+def test_read_through_subject_cache_miss_queries_db_and_repopulates_cache() -> None:
+    clock = FixedClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+    service = LocationService(clock=clock)
+    session = FakeLocationSession()
+
+    db_rec = LocationSnapshotRecord(
+        location_id=uuid4(),
+        subject_user_id=SUBJECT_USER_ID,
+        latitude=19.0760,
+        longitude=72.8777,
+        accuracy_meters=8.0,
+        source_kind="DB_SEEDED",
+        captured_at=datetime(2026, 1, 1, 11, 58, tzinfo=UTC),
+        received_at=datetime(2026, 1, 1, 11, 58, 5, tzinfo=UTC),
+    )
+    session.location_records.append(db_rec)
+
+    client, _, _ = _build_test_client(service=service, session=session)
+
+    # Cache is empty initially
+    assert service.latest_for_subject(SUBJECT_USER_ID) is None
+
+    response = client.get(
+        "/api/v1/location/latest",
+        params={"subject_user_id": str(SUBJECT_USER_ID)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["location_snapshot_id"] == str(db_rec.location_id)
+    assert body["source_kind"] == "DB_SEEDED"
+
+    # Cache was repopulated by read-through
+    cached = service.latest_for_subject(SUBJECT_USER_ID)
+    assert cached is not None
+    assert cached.location_snapshot_id == db_rec.location_id
+
+    # Subsequent request uses cache; scalar_query_count does not increase
+    count_before = session.scalar_query_count
+    cached_resp = client.get(
+        "/api/v1/location/latest",
+        params={"subject_user_id": str(SUBJECT_USER_ID)},
+    )
+    assert cached_resp.status_code == 200
+    assert session.scalar_query_count == count_before
+
+
+def test_read_through_incident_cache_miss_queries_db_and_repopulates_cache() -> None:
+    clock = FixedClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+    service = LocationService(clock=clock)
+    session = FakeLocationSession()
+    incident_id = uuid4()
+
+    db_rec = LocationSnapshotRecord(
+        location_id=uuid4(),
+        subject_user_id=SUBJECT_USER_ID,
+        incident_id=incident_id,
+        latitude=28.7041,
+        longitude=77.1025,
+        accuracy_meters=5.0,
+        source_kind="INCIDENT_DB",
+        captured_at=datetime(2026, 1, 1, 11, 58, tzinfo=UTC),
+        received_at=datetime(2026, 1, 1, 11, 58, 2, tzinfo=UTC),
+    )
+    session.location_records.append(db_rec)
+
+    client, _, _ = _build_test_client(service=service, session=session)
+
+    assert service.latest_for_incident(incident_id) is None
+
+    response = client.get(
+        "/api/v1/location/latest",
+        params={"incident_id": str(incident_id)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["location_snapshot_id"] == str(db_rec.location_id)
+    assert body["incident_id"] == str(incident_id)
+
+    # In-memory cache now repopulated for this incident
+    cached = service.latest_for_incident(incident_id)
+    assert cached is not None
+    assert cached.location_snapshot_id == db_rec.location_id
+
+
+def test_read_through_unauthorized_caregiver_cannot_access_db_record() -> None:
+    other_subject = uuid4()
+    caregiver = AuthenticatedPrincipal(user_id=uuid4(), role=UserRole.CAREGIVER)
+
+    session = FakeLocationSession()
+    # Seed a record for other_subject in DB
+    db_rec = LocationSnapshotRecord(
+        location_id=uuid4(),
+        subject_user_id=other_subject,
+        latitude=10.0,
+        longitude=10.0,
+        source_kind="SECRET",
+        captured_at=datetime(2026, 1, 1, 11, 58, tzinfo=UTC),
+        received_at=datetime(2026, 1, 1, 11, 58, 2, tzinfo=UTC),
+    )
+    session.location_records.append(db_rec)
+
+    # can_access_subject will return False for unauthorized caregiver
+    client, _, _ = _build_test_client(session=session, principal=caregiver)
+
+    response = client.get(
+        "/api/v1/location/latest",
+        params={"subject_user_id": str(other_subject)},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "LOCATION_ACCESS_DENIED"
+
+
+def test_read_through_preserves_staleness_computation() -> None:
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    clock = FixedClock(now)
+    service = LocationService(clock=clock, stale_after_seconds=300)
+    session = FakeLocationSession()
+
+    # Captured 400 seconds ago (> 300s window)
+    db_rec = LocationSnapshotRecord(
+        location_id=uuid4(),
+        subject_user_id=SUBJECT_USER_ID,
+        latitude=10.0,
+        longitude=10.0,
+        source_kind="OLD_DB",
+        captured_at=now - timedelta(seconds=400),
+        received_at=now - timedelta(seconds=395),
+    )
+    session.location_records.append(db_rec)
+
+    client, _, _ = _build_test_client(service=service, session=session)
+
+    response = client.get(
+        "/api/v1/location/latest",
+        params={"subject_user_id": str(SUBJECT_USER_ID)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["is_stale"] is True
+
+
+def test_read_through_empty_cache_and_empty_db_returns_404() -> None:
+    session = FakeLocationSession()
+    client, _, _ = _build_test_client(session=session)
+
+    response = client.get(
+        "/api/v1/location/latest",
+        params={"subject_user_id": str(SUBJECT_USER_ID)},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "LOCATION_NOT_AVAILABLE"

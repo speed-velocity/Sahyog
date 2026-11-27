@@ -12,8 +12,9 @@ class Settings(BaseSettings):
     app_name: str = "SAHYOG Backend"
     environment: str = "development"
     database_url: str = Field(
-        # No password is committed in the source tree. Local and CI runtime
-        # environments must provide SAHYOG_DATABASE_URL for their database.
+        # Runtime environments must provide SAHYOG_DATABASE_URL. Keep the
+        # fallback credential-free so a password is never committed or used
+        # accidentally by the application process.
         default="postgresql+psycopg://sahyog_app@localhost:5432/sahyog_dev",
         repr=False,
     )
@@ -29,8 +30,8 @@ class Settings(BaseSettings):
     timeout_worker_interval_seconds: float = 1.0
     timeout_worker_batch_size: int = 50
     cors_allowed_origins: str = (
-        "http://localhost:5173,http://127.0.0.1:5173,"
-        "http://localhost:3000,http://127.0.0.1:3000"
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://localhost:5173,http://127.0.0.1:5173"
     )
 
     model_config = SettingsConfigDict(

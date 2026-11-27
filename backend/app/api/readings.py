@@ -79,11 +79,16 @@ def ingest_reading(
             )
         )
         if existing is not None:
+            existing_dt = (
+                existing.observed_at
+                if existing.observed_at.tzinfo is not None
+                else existing.observed_at.replace(tzinfo=UTC)
+            )
             same_payload = (
                 existing.demo_run_id == request.demo_run_id
                 and existing.source_kind == request.source_kind
                 and existing.heart_rate_bpm == request.heart_rate_bpm
-                and existing.observed_at == observed_at
+                and existing_dt == observed_at
                 and existing.activity_context == request.activity_context
                 and existing.source_record_id == request.source_record_id
             )
@@ -103,11 +108,17 @@ def ingest_reading(
                 .order_by(HealthReading.observed_at.desc())
                 .limit(1)
             )
-            if latest is not None and observed_at <= latest.observed_at:
-                raise HTTPException(
-                    status_code=422,
-                    detail="observed_at must be later than the latest reading",
+            if latest is not None:
+                latest_dt = (
+                    latest.observed_at
+                    if latest.observed_at.tzinfo is not None
+                    else latest.observed_at.replace(tzinfo=UTC)
                 )
+                if observed_at <= latest_dt:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="observed_at must be later than the latest reading",
+                    )
             result = detector.detect(
                 [
                     DetectorReading(

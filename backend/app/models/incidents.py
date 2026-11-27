@@ -49,6 +49,11 @@ class Incident(Base):
         UniqueConstraint(
             "incident_id",
             "subject_user_id",
+            name="uq_incidents_id_subject",
+        ),
+        UniqueConstraint(
+            "incident_id",
+            "subject_user_id",
             "demo_run_id",
             name="uq_incidents_id_subject_run",
         ),

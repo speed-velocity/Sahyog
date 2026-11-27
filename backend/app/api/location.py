@@ -24,6 +24,14 @@ from backend.app.services.location import (
     LocationUpdateRequest,
     NearbyHospitalsResponse,
 )
+from backend.app.services.location_persistence import (
+    DemoRunNotFoundError,
+    IncidentNotFoundError,
+    get_latest_location_record_for_incident,
+    get_latest_location_record_for_subject,
+    persist_location_snapshot,
+    snapshot_record_to_schema,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["location"])
 _location_service = LocationService()
@@ -88,13 +96,39 @@ def submit_location_update(
     if scope_error is not None:
         return scope_error
     try:
-        return service.record_location(update)
+        snapshot = service.prepare_snapshot(update)
     except LocationUpdateRejected as error:
         return _problem(
             422,
             "INVALID_LOCATION_TIMESTAMP",
             str(error),
         )
+
+    try:
+        persist_location_snapshot(
+            session,
+            update=update,
+            location_snapshot_id=snapshot.location_snapshot_id,
+            received_at=snapshot.received_at,
+        )
+        session.commit()
+    except (DemoRunNotFoundError, IncidentNotFoundError) as error:
+        session.rollback()
+        return _problem(
+            status.HTTP_400_BAD_REQUEST,
+            "LOCATION_SCOPE_INVALID",
+            str(error),
+        )
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        return _problem(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "LOCATION_PERSISTENCE_FAILED",
+            "A database error occurred while persisting the location snapshot.",
+        )
+
+    service.publish_snapshot(snapshot, update=update)
+    return snapshot
 
 
 @router.get("/location/latest", response_model=LocationSnapshot)
@@ -120,6 +154,15 @@ def get_latest_location(
                 "Location access denied for the requested subject.",
             )
         snapshot = service.latest_for_subject(subject_user_id)
+        if snapshot is None:
+            record = get_latest_location_record_for_subject(session, subject_user_id)
+            if record is not None:
+                snapshot = snapshot_record_to_schema(
+                    record,
+                    now=service.current_time(),
+                    stale_after_seconds=service.stale_after_seconds,
+                )
+                service.publish_snapshot(snapshot)
     else:
         incident = session.get(Incident, incident_id)
         if incident is None or not can_access_subject(
@@ -131,6 +174,16 @@ def get_latest_location(
                 "Location access denied for the requested incident.",
             )
         snapshot = service.latest_for_incident(incident_id)
+        if snapshot is None:
+            record = get_latest_location_record_for_incident(session, incident_id)
+            if record is not None:
+                snapshot = snapshot_record_to_schema(
+                    record,
+                    now=service.current_time(),
+                    stale_after_seconds=service.stale_after_seconds,
+                )
+                service.publish_snapshot(snapshot)
+
     if snapshot is None:
         return _problem(
             status.HTTP_404_NOT_FOUND,

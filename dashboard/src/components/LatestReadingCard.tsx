@@ -36,9 +36,12 @@ export function LatestReadingCard({
     );
   }
 
-  const stale = isReadingStale(latestReading, staleAfterSeconds);
+  const freshnessReported =
+    typeof latestReading.is_stale === 'boolean' ||
+    (typeof staleAfterSeconds === 'number' && staleAfterSeconds > 0);
+  const stale = freshnessReported && isReadingStale(latestReading, staleAfterSeconds);
   const simulated = isSimulatedSource(latestReading.source_kind);
-  const history = recentReadings.length > 0 ? recentReadings : [latestReading];
+  const history = recentReadings;
 
   return (
     <div className="latest-reading">
@@ -55,7 +58,7 @@ export function LatestReadingCard({
             <span className="muted"> · {formatDateTime(latestReading.observed_at)}</span>
           </p>
         </div>
-        <Sparkline readings={history} staleAfterSeconds={staleAfterSeconds} />
+        {history.length > 1 ? <Sparkline readings={history} staleAfterSeconds={staleAfterSeconds} /> : null}
       </div>
 
       <div className="latest-reading__badges">
@@ -68,7 +71,9 @@ export function LatestReadingCard({
         ) : (
           <StatusBadge label={formatSource(latestReading.source_kind)} tone="neutral" />
         )}
-        {stale ? (
+        {!freshnessReported ? (
+          <StatusBadge label="Freshness not reported" tone="neutral" />
+        ) : stale ? (
           <StatusBadge
             description="The reading is older than the backend freshness window."
             label="Stale"
@@ -101,7 +106,7 @@ export function LatestReadingCard({
           <p className="muted">Source reported by the backend as {formatSource(latestReading.source_kind)}.</p>
         )}
         <button className="btn btn--ghost btn--sm" onClick={onViewHistory} type="button">
-          View reading history
+          View monitoring details
           <Icon name="chevronRight" size={15} />
         </button>
       </div>
