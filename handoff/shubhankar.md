@@ -2,7 +2,7 @@
 
 Owner: Shubhankar
 Role: Backend
-Last updated: 2026-11-25
+Last updated: 2026-11-27
 
 ## Completed
 - Task IDs: B1.6 foundation slice started
@@ -11,6 +11,11 @@ Last updated: 2026-11-25
 ## In Progress
 - Task IDs: B1.7, B1.10, I3.2, I3.4, I3.7, T0.4
 - Current state: Added local JWT/Argon2 authentication, subject-controlled caregiver grant/revoke operations, immediate authorization checks, protected incident retrieval/verification routes, demo-run start/status/reset routes, reading ingestion/detector adapter seam, bounded incident lists, and dashboard overview. Incident, timeout, escalation, and PostgreSQL schema-test foundations remain integrated.
+
+## Latest Backend Fixes
+- Added `GET /api/v1/authorizations` for active authorization discovery. Caregivers receive their incoming subject grants; subjects receive grants they issued. The endpoint does not trust a caller-supplied subject ID and applies a bounded limit.
+- Added dashboard development origins (`localhost:5173` and `127.0.0.1:5173`) to the default CORS configuration.
+- Removed the committed password from the runtime database URL fallback. Deployments and local environments must provide `SAHYOG_DATABASE_URL` for their application connection.
 
 ## Files Changed
 - `backend/app/main.py`: FastAPI application bootstrap.
@@ -93,6 +98,12 @@ Last updated: 2026-11-25
 - Result: Passed; Alembic head is `2f4d5b1a8c77` and both migrations generate PostgreSQL DDL.
 - Command: full PostgreSQL suite with local isolated `sahyog_dev`/`sahyog_test` databases
 - Result: Passed, 54 tests; SCRAM authentication restored after provisioning.
+- Command: focused auth/authorization/health/infrastructure/metadata tests
+- Result: Passed, 10 tests.
+- Command: Ruff check and format check on backend app/tests
+- Result: Passed.
+- Command: OpenAPI route registration check
+- Result: `/api/v1/authorizations` and `/api/v1/authorizations/{authorization_id}` registered.
 
 ## Commits
 - Commit ID: None; workspace is not currently a Git checkout.
