@@ -543,17 +543,19 @@ Clients must inspect responses according to the target endpoint domain.
 ## 14. Remaining Team Action Items
 
 1. **Dashboard Client Authentication (`dashboard/src/api/client.ts` — Vaishnavi):**
-   - Connect login UI to `POST /api/v1/auth/token`.
-   - Attach `Authorization: Bearer <access_token>` to all protected calls.
+   - **`COMPLETED`:** Connected login UI to `POST /api/v1/auth/token`.
+   - **`COMPLETED`:** Form-urlencoded token request with client-side credential storage and `Authorization: Bearer <access_token>` attached to all protected API calls.
 2. **Dashboard Adaptation to Flat Backend Schemas (Vaishnavi):**
-   - Update `dashboard/src/views/OverviewView.tsx` to consume the flat `DashboardOverview` fields (`subject_user_id`, `monitoring_status`, `latest_reading`, `active_incident`, `incident_status`, `latest_update_at`).
-   - Update `IncidentDetailPanel.tsx` and timeline views to consume the 9 scalar fields from `IncidentResponse` rather than expecting nested collections.
-3. **Caregiver Subject Discovery (`GET /api/v1/authorizations` — Shubhankar):**
-   - Implement and mount the approved `GET /api/v1/authorizations` endpoint so caregivers can dynamically query authorized subject IDs.
-4. **PostgreSQL-Backed Location Persistence (Vaishnavi & Utkarsh):**
-   - Wire `LocationService` to persist location updates into the migrated `location_snapshots` PostgreSQL table (currently operating in-memory).
+   - **`COMPLETED`:** `dashboard/src/views/OverviewView.tsx` consumes flat `DashboardOverview` fields (`subject_user_id`, `monitoring_status`, `latest_reading`, `active_incident`, `incident_status`, `latest_update_at`).
+   - **`COMPLETED`:** `IncidentDetailPanel.tsx` and timeline views consume scalar fields from `IncidentResponse`.
+3. **Caregiver Subject Discovery (`GET /api/v1/authorizations/me` & `GET /api/v1/authorizations` — Shubhankar & Vaishnavi):**
+   - **`COMPLETED`:** Implemented and mounted endpoints so caregivers can dynamically query authorized subject IDs and subjects can manage delegations.
+4. **PostgreSQL-Backed Location Persistence & Read-Through (Vaishnavi & Utkarsh):**
+   - **`COMPLETED`:** Implemented `backend/app/services/location_persistence.py` repository.
+   - **`COMPLETED`:** Wired `LocationService.prepare_snapshot()` and `LocationService.publish_snapshot()` into `backend/app/api/location.py`.
+   - **`COMPLETED`:** Enabled commit-before-cache-publication and database read-through fallback for `/api/v1/location/latest`.
 5. **Explicit Role Check on Reading Ingestion (Shubhankar):**
-   - Add explicit `principal.role is UserRole.SUBJECT` check to `POST /api/v1/readings` alongside existing run ownership checks.
+   - **`COMPLETED`:** Reading ingestion restricted to `UserRole.SUBJECT` with demo run ownership checks.
 
 ---
 
@@ -562,20 +564,62 @@ Clients must inspect responses according to the target endpoint domain.
 ### Role Ownership (per `TEAM.md`)
 
 - **Shubhankar (Backend):**
-  - **`IMPLEMENTED`:** Reading ingestion validation (BPM 20–250, idempotency consistency, monotonic timestamps).
-  - **`IMPLEMENTED`:** Lifespan worker orchestration and CORS middleware.
-  - **`IMPLEMENTED`:** Authoritative flat schemas (`DashboardOverview`, `IncidentResponse`).
-  - **PLANNED:** `GET /api/v1/authorizations` caregiver subject discovery route.
-  - **PLANNED:** Explicit role check on `POST /api/v1/readings`.
+  - **`INTEGRATED`:** Reading ingestion validation (BPM 20–250, idempotency consistency, monotonic timestamps).
+  - **`INTEGRATED`:** Lifespan worker orchestration and CORS middleware.
+  - **`INTEGRATED`:** Authoritative flat schemas (`DashboardOverview`, `IncidentResponse`).
+  - **`INTEGRATED`:** `GET /api/v1/authorizations` and `GET /api/v1/authorizations/me` caregiver discovery routes.
+  - **`INTEGRATED`:** Explicit subject role check on `POST /api/v1/readings`.
 - **Vaishnavi (Dashboard & Location):**
-  - **`IMPLEMENTED`:** Location router prefix `/api/v1` mounted directly in `backend/app/main.py`.
-  - **`IMPLEMENTED`:** Location updates, latest location query, and nearby hospital query endpoints.
-  - **PLANNED:** Dashboard JWT authentication flow and `Authorization: Bearer <token>` in `client.ts`.
-  - **PLANNED:** Dashboard UI adaptation to flat backend response schemas and canonical enums.
+  - **`INTEGRATED`:** Location router mounted under `/api/v1` prefix.
+  - **`INTEGRATED`:** Location updates, latest location query, and nearby hospital query endpoints.
+  - **`INTEGRATED`:** Dashboard JWT authentication flow and bearer token attachment.
+  - **`INTEGRATED`:** Complete React caregiver dashboard with 22 vitest tests and clean TypeScript build.
+- **Prasiddh (AI/ML & Monitoring):**
+  - **`INTEGRATED`:** Anomaly detector adapter, provider, and deduplication.
+  - **`INTEGRATED`:** Last-moments buffer and heart rate simulation domain.
+  - **`INTEGRATED`:** Python 3.12 UTC datetime alignment.
+- **Aditya (Flutter Mobile Frontend):**
+  - **`INTEGRATED`:** Flutter mobile project structured in `mobile/`.
+  - **`INTEGRATED`:** HTTP location reporter and reading ingestion transport models matching backend response schemas.
+  - **`INTEGRATED`:** Simulation heart rate sources and UI state panels.
 - **Utkarsh (Role 5 — Integration & Database):**
-  - **`IMPLEMENTED`:** Database foundation for table `location_snapshots` and incident composite unique constraint (migration `25c1af2fe01c`).
-  - **`IMPLEMENTED`:** PostgreSQL integration schema tests and runtime privilege tests (`test_postgresql_schema.py`).
-  - **`IMPLEMENTED`:** Shared hospital package extraction (`backend/app/services/hospital/`).
-  - **`IMPLEMENTED`:** Escalation notifier package structure and backward-compatible factory (`backend/app/services/notifier/`).
-  - **`IMPLEMENTED`:** CI post-migration runtime privileges step and migration downgrade/re-upgrade round-trip validation.
-  - **PLANNED:** PostgreSQL-backed location persistence implementation in `LocationService` once approved.
+  - **`INTEGRATED`:** Database foundation for table `location_snapshots` and incident composite unique constraint (`25c1af2fe01c`).
+  - **`INTEGRATED`:** Linear Alembic migration chain and downgrade/upgrade round-trip validation.
+  - **`INTEGRATED`:** Location persistence repository (`backend/app/services/location_persistence.py`) and API read-through wiring.
+  - **`INTEGRATED`:** PostgreSQL integration schema tests, constraint tests, and RESTRICT delete validation.
+  - **`INTEGRATED`:** CI resilience update for `setup-uv` network timeout fallback and `integration` pytest marker registration.
+  - **`INTEGRATED`:** Complete end-to-end demo workflow verification suite (`test_demo_workflow_e2e.py`) validating all 3 demo scenarios.
+
+---
+
+## 16. Demo Execution and Run Instructions
+
+### 1. Start the Backend API Server
+```bash
+cd backend
+uv sync --locked --group dev --group migrations
+uv run uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+
+### 2. Start the Caregiver Dashboard
+```bash
+cd dashboard
+npm install # or npm ci
+npm run dev -- --port 5173
+```
+Open `http://localhost:5173` in a browser. Log in with caregiver credentials to view authorized subjects, live readings, incident status, and location/hospital panels.
+
+### 3. Run Backend Verification Suite
+```bash
+cd backend
+uv run --locked pytest -m "not integration"
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+```
+
+### 4. Run Dashboard Verification Suite
+```bash
+cd dashboard
+npm test
+npm run build
+```
