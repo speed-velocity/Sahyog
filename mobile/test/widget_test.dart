@@ -1,4 +1,4 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sahyog_mobile/app/sahyog_app.dart';
 import 'package:sahyog_mobile/features/monitoring/presentation/monitoring_reading_panel.dart';
@@ -7,15 +7,13 @@ import 'package:sahyog_mobile/shared/widgets/async_state_panel.dart';
 
 Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
   final scrollable = find.byType(Scrollable).first;
-  await tester.scrollUntilVisible(finder, 280, scrollable: scrollable);
-  final center = tester.getCenter(finder);
-  final viewportHeight =
-      tester.view.physicalSize.height / tester.view.devicePixelRatio;
-  if (center.dy < 100) {
-    await tester.drag(scrollable, const Offset(0, 180));
-  } else if (center.dy > viewportHeight - 100) {
-    await tester.drag(scrollable, const Offset(0, -180));
-  }
+  await tester.drag(scrollable, const Offset(0, 10000));
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    finder,
+    280,
+    scrollable: scrollable,
+  );
   await tester.pumpAndSettle();
 }
 
@@ -54,8 +52,11 @@ void main() {
     await _scrollTo(tester, find.text('72 bpm'));
     expect(find.text('72 bpm'), findsOneWidget);
     expect(find.text('NOT LIVE DATA'), findsOneWidget);
+    expect(find.text('SAMPLE / DEMO DATA'), findsOneWidget);
     expect(
-      find.text('Display example only · not from a sensor or simulator.'),
+      find.text(
+        'Sample value only · not from a sensor, simulator, or backend.',
+      ),
       findsOneWidget,
     );
   });
@@ -87,6 +88,20 @@ void main() {
       expect(find.text('60s remaining'), findsOneWidget);
       expect(find.text('Running'), findsOneWidget);
       expect(find.text('PREVIEW RUNNING'), findsOneWidget);
+
+      await tester.drag(
+        find.byType(ListView).first,
+        const Offset(0, 10000),
+      );
+      await tester.pump();
+      expect(
+        find.text('Local preview only · no sensor, simulator, or backend is connected.'),
+        findsOneWidget,
+      );
+      expect(find.text('SAMPLE / DEMO DATA'), findsOneWidget);
+      expect(find.text('NOT LIVE DATA'), findsOneWidget);
+      expect(find.text('Connected'), findsNothing);
+      expect(find.text('No readings available'), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('59s remaining'), findsOneWidget);
@@ -145,6 +160,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(replay);
       await tester.pump();
+      await _scrollTo(tester, find.text('Running'));
       expect(find.text('Running'), findsOneWidget);
     },
   );
@@ -209,16 +225,14 @@ void main() {
     await tester.drag(find.byType(ListView).first, const Offset(0, 5000));
     await tester.pumpAndSettle();
     await _startScenario(tester, DemoScenario.normal, buttonLabel: 'Replay');
-    expect(find.text('Running'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('60s remaining'),
-      -280,
-      scrollable: find.byType(Scrollable).first,
+    await tester.drag(
+      find.byType(ListView).first,
+      const Offset(0, 10000),
     );
     await tester.pump();
+    expect(find.text('Running'), findsOneWidget);
     expect(find.text('60s remaining'), findsOneWidget);
     expect(find.text('0% of local preview elapsed'), findsOneWidget);
-    expect(find.text('Running'), findsOneWidget);
   });
 
   testWidgets('navigation preserves and advances a running preview', (
@@ -243,6 +257,7 @@ void main() {
     await tester.tap(find.text('Monitor'));
     await tester.pumpAndSettle();
     expect(find.text('TRUE_ANOMALY · True anomaly'), findsOneWidget);
+    await _scrollTo(tester, find.text('Replay'));
     expect(find.text('Replay'), findsOneWidget);
     await _scrollTo(tester, find.text('Local preview timer ended'));
     expect(find.text('Local preview timer ended'), findsOneWidget);
@@ -271,7 +286,12 @@ void main() {
       await tester.drag(find.byType(ListView).first, const Offset(0, 900));
       await tester.pumpAndSettle();
       await _startScenario(tester, scenario, buttonLabel: 'Replay');
+      await _scrollTo(tester, find.text('Running'));
       expect(find.text('Running'), findsOneWidget);
+      await _scrollTo(
+        tester,
+        find.text('${scenario.title} · ${scenario.wireLabel}'),
+      );
       expect(
         find.text('${scenario.title} · ${scenario.wireLabel}'),
         findsOneWidget,
@@ -646,6 +666,10 @@ void main() {
     expect(controller.start(DemoScenario.normal), isTrue);
     expect(controller.start(DemoScenario.falseAlarm), isFalse);
     expect(controller.scenario, DemoScenario.normal);
+    controller.replay();
+    expect(controller.isRunning, isTrue);
+    expect(controller.remainingSeconds, 2);
+    expect(controller.elapsedPercentage, 0);
     controller.reset();
     expect(controller.isRunning, isFalse);
     expect(controller.scenario, isNull);
