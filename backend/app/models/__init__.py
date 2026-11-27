@@ -11,6 +11,7 @@ from backend.app.models.incidents import (
     IncidentTimelineEvent,
     VerificationResponse,
 )
+from backend.app.models.location import LocationSnapshotRecord
 from backend.app.models.readings import AnomalyEvent, HealthReading
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "Incident",
     "IncidentAnomalyEvent",
     "IncidentTimelineEvent",
+    "LocationSnapshotRecord",
     "User",
     "VerificationResponse",
 ]

@@ -10,6 +10,7 @@ from backend.app.models import (
     Incident,
     IncidentAnomalyEvent,
     IncidentTimelineEvent,
+    LocationSnapshotRecord,
     User,
     VerificationResponse,
 )
@@ -19,11 +20,12 @@ from sqlalchemy.orm import Session
 
 pytestmark = pytest.mark.integration
 
-EXPECTED_REVISION = "2f4d5b1a8c77"
+EXPECTED_REVISION = "25c1af2fe01c"
 EXPECTED_TABLES = {
     "users",
     "auth_identities",
     "caregiver_authorizations",
+    "location_snapshots",
     "demo_runs",
     "health_readings",
     "anomaly_events",
@@ -132,6 +134,35 @@ def _incident(
         updated_at=now,
         verification_deadline_at=None,
         resolved_at=None,
+    )
+
+
+def _location_snapshot(
+    subject_user_id,
+    *,
+    incident_id=None,
+    demo_run_id=None,
+    run_generation=None,
+    latitude=18.5204,
+    longitude=73.8567,
+    accuracy_meters=10.0,
+    source_kind="SIMULATED",
+    captured_at=None,
+    received_at=None,
+) -> LocationSnapshotRecord:
+    now = _now()
+    return LocationSnapshotRecord(
+        location_id=uuid4(),
+        subject_user_id=subject_user_id,
+        incident_id=incident_id,
+        demo_run_id=demo_run_id,
+        run_generation=run_generation,
+        latitude=latitude,
+        longitude=longitude,
+        accuracy_meters=accuracy_meters,
+        source_kind=source_kind,
+        captured_at=captured_at or now,
+        received_at=received_at or now,
     )
 
 
@@ -668,4 +699,379 @@ def test_anomaly_delete_is_restricted_when_evidence_link_references_event(
         db_session,
         text("DELETE FROM anomaly_events WHERE anomaly_event_id = :event_id"),
         {"event_id": anomaly.anomaly_event_id},
+    )
+
+
+def test_location_snapshots_table_structure_and_nullability(
+    test_database_engine,
+) -> None:
+    with test_database_engine.connect() as connection:
+        inspector = inspect(connection)
+        columns = {
+            col["name"]: col
+            for col in inspector.get_columns("location_snapshots", schema="public")
+        }
+        pk = inspector.get_pk_constraint("location_snapshots", schema="public")
+
+    expected_column_names = {
+        "location_id",
+        "subject_user_id",
+        "incident_id",
+        "demo_run_id",
+        "run_generation",
+        "latitude",
+        "longitude",
+        "accuracy_meters",
+        "source_kind",
+        "captured_at",
+        "received_at",
+    }
+    assert set(columns.keys()) == expected_column_names
+    assert pk["constrained_columns"] == ["location_id"]
+
+    nullable_columns = {
+        "incident_id",
+        "demo_run_id",
+        "run_generation",
+        "accuracy_meters",
+    }
+    for name, col in columns.items():
+        if name in nullable_columns:
+            assert col["nullable"] is True, f"{name} should be nullable"
+        else:
+            assert col["nullable"] is False, f"{name} should not be nullable"
+
+
+def test_location_snapshots_foreign_keys_and_ondelete(
+    test_database_engine,
+) -> None:
+    with test_database_engine.connect() as connection:
+        fks = inspect(connection).get_foreign_keys(
+            "location_snapshots", schema="public"
+        )
+
+    fk_by_name = {fk["name"]: fk for fk in fks}
+    expected_fks = {
+        "fk_location_snapshots_subject_user_id",
+        "fk_location_snapshots_run_subject",
+        "fk_location_snapshots_incident_subject",
+        "fk_location_snapshots_incident_subject_run",
+    }
+    assert expected_fks <= set(fk_by_name.keys())
+
+    user_fk = fk_by_name["fk_location_snapshots_subject_user_id"]
+    assert user_fk["referred_table"] == "users"
+    assert user_fk["constrained_columns"] == ["subject_user_id"]
+    assert user_fk["referred_columns"] == ["user_id"]
+    assert user_fk.get("options", {}).get("ondelete", "RESTRICT").upper() == "RESTRICT"
+
+    run_fk = fk_by_name["fk_location_snapshots_run_subject"]
+    assert run_fk["referred_table"] == "demo_runs"
+    assert set(run_fk["constrained_columns"]) == {"demo_run_id", "subject_user_id"}
+    assert set(run_fk["referred_columns"]) == {"demo_run_id", "subject_user_id"}
+    assert run_fk.get("options", {}).get("ondelete", "RESTRICT").upper() == "RESTRICT"
+
+    inc_fk = fk_by_name["fk_location_snapshots_incident_subject"]
+    assert inc_fk["referred_table"] == "incidents"
+    assert set(inc_fk["constrained_columns"]) == {"incident_id", "subject_user_id"}
+    assert set(inc_fk["referred_columns"]) == {"incident_id", "subject_user_id"}
+    assert inc_fk.get("options", {}).get("ondelete", "RESTRICT").upper() == "RESTRICT"
+
+    inc_run_fk = fk_by_name["fk_location_snapshots_incident_subject_run"]
+    assert inc_run_fk["referred_table"] == "incidents"
+    assert set(inc_run_fk["constrained_columns"]) == {
+        "incident_id",
+        "subject_user_id",
+        "demo_run_id",
+    }
+    assert set(inc_run_fk["referred_columns"]) == {
+        "incident_id",
+        "subject_user_id",
+        "demo_run_id",
+    }
+    assert (
+        inc_run_fk.get("options", {}).get("ondelete", "RESTRICT").upper() == "RESTRICT"
+    )
+
+
+def test_location_snapshot_inserts_valid_record(db_session: Session) -> None:
+    user = _user(db_session)
+    run = _run(db_session, user.user_id)
+    incident = _incident(
+        user.user_id,
+        demo_run_id=run.demo_run_id,
+        run_generation=run.current_generation,
+    )
+    db_session.add(incident)
+    db_session.flush()
+
+    # Valid snapshot anchored to user only
+    snap1 = _location_snapshot(user.user_id)
+    db_session.add(snap1)
+    db_session.flush()
+
+    # Valid snapshot anchored to user, run, and incident
+    snap2 = _location_snapshot(
+        user.user_id,
+        incident_id=incident.incident_id,
+        demo_run_id=run.demo_run_id,
+        run_generation=run.current_generation,
+    )
+    db_session.add(snap2)
+    db_session.flush()
+
+    assert db_session.get(LocationSnapshotRecord, snap1.location_id) is not None
+    assert db_session.get(LocationSnapshotRecord, snap2.location_id) is not None
+
+
+def test_location_snapshot_rejects_nonexistent_subject(db_session: Session) -> None:
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(uuid4()),
+    )
+
+
+def test_location_snapshot_rejects_cross_user_run_mismatch(db_session: Session) -> None:
+    user_a = _user(db_session)
+    user_b = _user(db_session)
+    run_a = _run(db_session, user_a.user_id)
+
+    # Snapshot for user_b but demo_run belonging to user_a
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(
+            user_b.user_id,
+            demo_run_id=run_a.demo_run_id,
+            run_generation=run_a.current_generation,
+        ),
+    )
+
+
+def test_location_snapshot_rejects_cross_user_incident_mismatch(
+    db_session: Session,
+) -> None:
+    user_a = _user(db_session)
+    user_b = _user(db_session)
+    run_a = _run(db_session, user_a.user_id)
+    incident_a = _incident(
+        user_a.user_id,
+        demo_run_id=run_a.demo_run_id,
+        run_generation=run_a.current_generation,
+    )
+    db_session.add(incident_a)
+    db_session.flush()
+
+    # Snapshot for user_b but incident belonging to user_a
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(
+            user_b.user_id,
+            incident_id=incident_a.incident_id,
+        ),
+    )
+
+
+def test_location_snapshot_rejects_cross_incident_run_mismatch(
+    db_session: Session,
+) -> None:
+    user = _user(db_session)
+    run_a = _run(db_session, user.user_id)
+    run_b = _run(db_session, user.user_id)
+    incident_a = _incident(
+        user.user_id,
+        demo_run_id=run_a.demo_run_id,
+        run_generation=run_a.current_generation,
+    )
+    db_session.add(incident_a)
+    db_session.flush()
+
+    # Snapshot references incident_a (belonging to run_a) but specifies run_b
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(
+            user.user_id,
+            incident_id=incident_a.incident_id,
+            demo_run_id=run_b.demo_run_id,
+            run_generation=run_b.current_generation,
+        ),
+    )
+
+
+def test_location_snapshot_latitude_range_check(db_session: Session) -> None:
+    user = _user(db_session)
+
+    # Valid boundaries
+    snap_min = _location_snapshot(user.user_id, latitude=-90.0)
+    snap_max = _location_snapshot(user.user_id, latitude=90.0)
+    db_session.add_all([snap_min, snap_max])
+    db_session.flush()
+
+    # Out of bounds
+    snap_too_low = _location_snapshot(user.user_id, latitude=-90.0001)
+    _expect_integrity_error(db_session, snap_too_low)
+
+    snap_too_high = _location_snapshot(user.user_id, latitude=90.0001)
+    _expect_integrity_error(db_session, snap_too_high)
+
+
+def test_location_snapshot_longitude_range_check(db_session: Session) -> None:
+    user = _user(db_session)
+
+    # Valid boundaries
+    snap_min = _location_snapshot(user.user_id, longitude=-180.0)
+    snap_max = _location_snapshot(user.user_id, longitude=180.0)
+    db_session.add_all([snap_min, snap_max])
+    db_session.flush()
+
+    # Out of bounds
+    snap_too_low = _location_snapshot(user.user_id, longitude=-180.0001)
+    _expect_integrity_error(db_session, snap_too_low)
+
+    snap_too_high = _location_snapshot(user.user_id, longitude=180.0001)
+    _expect_integrity_error(db_session, snap_too_high)
+
+
+def test_location_snapshot_accuracy_range_check(db_session: Session) -> None:
+    user = _user(db_session)
+
+    # Valid accuracy values (None, positive <= 100000)
+    snap_none = _location_snapshot(user.user_id, accuracy_meters=None)
+    snap_small = _location_snapshot(user.user_id, accuracy_meters=0.01)
+    snap_max = _location_snapshot(user.user_id, accuracy_meters=100000.0)
+    db_session.add_all([snap_none, snap_small, snap_max])
+    db_session.flush()
+
+    # Zero or negative accuracy rejected
+    _expect_integrity_error(
+        db_session, _location_snapshot(user.user_id, accuracy_meters=0.0)
+    )
+    _expect_integrity_error(
+        db_session, _location_snapshot(user.user_id, accuracy_meters=-5.0)
+    )
+
+    # Exceeding 100km rejected
+    _expect_integrity_error(
+        db_session, _location_snapshot(user.user_id, accuracy_meters=100000.1)
+    )
+
+
+def test_location_snapshot_run_generation_pairing_and_positivity(
+    db_session: Session,
+) -> None:
+    user = _user(db_session)
+    run = _run(db_session, user.user_id)
+
+    # demo_run_id without run_generation
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(
+            user.user_id,
+            demo_run_id=run.demo_run_id,
+            run_generation=None,
+        ),
+    )
+
+    # run_generation without demo_run_id
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(
+            user.user_id,
+            demo_run_id=None,
+            run_generation=1,
+        ),
+    )
+
+    # run_generation <= 0
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(
+            user.user_id,
+            demo_run_id=run.demo_run_id,
+            run_generation=0,
+        ),
+    )
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(
+            user.user_id,
+            demo_run_id=run.demo_run_id,
+            run_generation=-1,
+        ),
+    )
+
+
+def test_location_snapshot_source_kind_nonempty(db_session: Session) -> None:
+    user = _user(db_session)
+
+    # Empty string
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(user.user_id, source_kind=""),
+    )
+
+    # Whitespace only
+    _expect_integrity_error(
+        db_session,
+        _location_snapshot(user.user_id, source_kind="   "),
+    )
+
+
+def test_location_snapshot_indexes_and_ordering(test_database_engine) -> None:
+    with test_database_engine.connect() as connection:
+        indexes = {
+            idx["name"]: idx
+            for idx in inspect(connection).get_indexes(
+                "location_snapshots", schema="public"
+            )
+        }
+
+    expected_indexes = {
+        "ix_location_snapshots_subject_captured_received",
+        "ix_location_snapshots_incident_captured_received",
+        "ix_location_snapshots_run_captured_received",
+    }
+    assert expected_indexes <= set(indexes.keys())
+
+
+def test_location_snapshot_referenced_records_restrict_delete(
+    db_session: Session,
+) -> None:
+    user = _user(db_session)
+    run = _run(db_session, user.user_id)
+    incident = _incident(
+        user.user_id,
+        demo_run_id=run.demo_run_id,
+        run_generation=run.current_generation,
+    )
+    db_session.add(incident)
+    db_session.flush()
+
+    snapshot = _location_snapshot(
+        user.user_id,
+        incident_id=incident.incident_id,
+        demo_run_id=run.demo_run_id,
+        run_generation=run.current_generation,
+    )
+    db_session.add(snapshot)
+    db_session.flush()
+
+    # Attempting to delete incident must fail with RESTRICT
+    _expect_statement_integrity_error(
+        db_session,
+        text("DELETE FROM incidents WHERE incident_id = :incident_id"),
+        {"incident_id": incident.incident_id},
+    )
+
+    # Attempting to delete demo_run must fail with RESTRICT
+    _expect_statement_integrity_error(
+        db_session,
+        text("DELETE FROM demo_runs WHERE demo_run_id = :demo_run_id"),
+        {"demo_run_id": run.demo_run_id},
+    )
+
+    # Attempting to delete user must fail with RESTRICT
+    _expect_statement_integrity_error(
+        db_session,
+        text("DELETE FROM users WHERE user_id = :user_id"),
+        {"user_id": user.user_id},
     )
