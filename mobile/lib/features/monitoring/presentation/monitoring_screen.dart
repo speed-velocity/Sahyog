@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
+
 import 'preview_session_controller.dart';
 import 'monitoring_reading_panel.dart';
 
 class MonitoringScreen extends StatelessWidget {
-  const MonitoringScreen({
-    super.key,
-    required this.controller,
-  });
+  const MonitoringScreen({super.key, required this.controller});
 
   final PreviewSessionController controller;
 
@@ -115,8 +113,6 @@ class MonitoringScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 16),
-
             // Reading Panel
             MonitoringReadingPanel(
               connectionState: ConnectionDisplayState.disconnected,
@@ -196,8 +192,8 @@ class MonitoringScreen extends StatelessWidget {
                       LinearProgressIndicator(
                         value: controller.duration.inSeconds > 0
                             ? (controller.duration.inSeconds -
-                                    controller.remainingSeconds) /
-                                controller.duration.inSeconds
+                                      controller.remainingSeconds) /
+                                  controller.duration.inSeconds
                             : 0,
                       ),
                     ] else if (isEnded) ...[
@@ -234,6 +230,36 @@ class MonitoringScreen extends StatelessWidget {
                         style: theme.textTheme.labelMedium?.copyWith(
                           color: theme.colorScheme.outline,
                           fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+
+                    if (controller.hasAnomalyAlert &&
+                        controller.anomalyAlertMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: theme.colorScheme.error,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                controller.anomalyAlertMessage!,
+                                style: TextStyle(
+                                  color: theme.colorScheme.onErrorContainer,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],

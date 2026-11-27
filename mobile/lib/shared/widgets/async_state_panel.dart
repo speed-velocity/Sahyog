@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AsyncPanelState {
-  loading,
-  error,
-}
+enum AsyncPanelState { loading, error }
 
 class AsyncStatePanel extends StatelessWidget {
   const AsyncStatePanel({
@@ -38,10 +35,7 @@ class AsyncStatePanel extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium,
-            ),
+            Text(message, style: theme.textTheme.bodyMedium),
             const SizedBox(height: 12),
             if (state == AsyncPanelState.loading)
               const LinearProgressIndicator()

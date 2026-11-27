@@ -9,11 +9,7 @@ Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
   final scrollable = find.byType(Scrollable).first;
   await tester.drag(scrollable, const Offset(0, 10000));
   await tester.pumpAndSettle();
-  await tester.scrollUntilVisible(
-    finder,
-    280,
-    scrollable: scrollable,
-  );
+  await tester.scrollUntilVisible(finder, 280, scrollable: scrollable);
   await tester.pumpAndSettle();
 }
 
@@ -89,13 +85,12 @@ void main() {
       expect(find.text('Running'), findsOneWidget);
       expect(find.text('PREVIEW RUNNING'), findsOneWidget);
 
-      await tester.drag(
-        find.byType(ListView).first,
-        const Offset(0, 10000),
-      );
+      await tester.drag(find.byType(ListView).first, const Offset(0, 10000));
       await tester.pump();
       expect(
-        find.text('Local preview only · no sensor, simulator, or backend is connected.'),
+        find.text(
+          'Local preview only · no sensor, simulator, or backend is connected.',
+        ),
         findsOneWidget,
       );
       expect(find.text('SAMPLE / DEMO DATA'), findsOneWidget);
@@ -122,7 +117,6 @@ void main() {
       await _scrollTo(tester, find.text('Reset preview'));
       await tester.tap(find.text('Reset preview'));
       await tester.pumpAndSettle();
-      await _scrollTo(tester, find.text('No preview selected'));
       expect(find.text('No preview selected'), findsOneWidget);
     }
   });
@@ -225,10 +219,7 @@ void main() {
     await tester.drag(find.byType(ListView).first, const Offset(0, 5000));
     await tester.pumpAndSettle();
     await _startScenario(tester, DemoScenario.normal, buttonLabel: 'Replay');
-    await tester.drag(
-      find.byType(ListView).first,
-      const Offset(0, 10000),
-    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, 10000));
     await tester.pump();
     expect(find.text('Running'), findsOneWidget);
     expect(find.text('60s remaining'), findsOneWidget);
