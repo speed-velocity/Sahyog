@@ -53,9 +53,7 @@ final sample = HrSample(ts: DateTime.parse('2026-11-23T10:00:03Z'), hr: 78);
 
 ### 2.2 `HeartRateSource`
 
- abstraction for the source of heart-rate readings.
-
-**Constructor:** internal, typically `HeartRateSource.simulated`
+abstraction for the source of heart-rate readings.
 
 **Public interface:**
 - `Stream<HrSample> get samples` — Stream of readings from this source. Emits in chronological order with UTC timestamps. Broadcast or single-subscription depending on implementation.
@@ -319,7 +317,7 @@ The complete flow for all three scenarios:
 
 ---
 
-## 6. Verification Flow Summary
+### 6. Verification Flow Summary
 
 1. Flutter submits readings through Aditya's API client.
 2. Backend returns `detection_status`.

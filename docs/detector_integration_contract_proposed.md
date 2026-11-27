@@ -50,7 +50,7 @@ The following incident lifecycle statuses are correct and backend-owned:
 | Reading response `detection_status` | `NORMAL`, `ANOMALY_DETECTED` | TEAM-CONFIRMED; backend response contract |
 | Detector `detector_result` | `HR_SPIKE`, `HR_DROP` | TEAM-CONFIRMED; detector-result vocabulary |
 | Incident lifecycle | `PENDING_VERIFICATION`, `ESCALATION_IN_PROGRESS`, `ESCALATED`, `RESOLVED_FALSE_ALARM`, `RESOLVED` | Backend-owned; exact persistence/API mapping with Shubhankar |
-| Dashboard statuses | `NORMAL`, `MONITORING`, `ANOMALY_DETECTED`, `VERIFICATION_PENDING`, `FALSE_ALARM_RESOLVED`, `ESCALATED`, `RESOLVED`, plus `RUNNING`/`COMPLETED` run labels | Actual implementation; backend/API confirmation still required |
+| Dashboard statuses | `NORMAL`, `MONITORING`, `ANOMALY_DETECTED`, `VERIFICATION_PENDING`, `FALSE_ALARM_RESOLVED`, `ESCALATED`, `RESOLVED`, plus run labels `RUNNING`/`COMPLETED` | Actual implementation; backend/API confirmation still required |
 
 `ANOMALY_DETECTED` in the reading response is not by itself proof of a persisted incident status. `NORMAL` means no anomaly indicated; it is not an incident resolution. Do not collapse detection, verification, and escalation into one field.
 
@@ -71,6 +71,7 @@ The following incident lifecycle statuses are correct and backend-owned:
 5. Confirm Flutter submits readings and consumes backend results — no independent anomaly decision.
 6. Note that full Flutter/backend three-scenario E2E is still pending.
 7. Backend baseline: `fea72cb`; Python detector integration: APPROVED and SIGNED OFF.
-8. **Confirmed:** `POST /api/v1/readings` response fields: `reading_id`, `demo_run_id`, `accepted`, `detection_status`, `anomaly_event_id`, `incident_id`. No local anomaly decisions.
+
+**Confirmed:** `POST /api/v1/readings` response fields: `reading_id`, `demo_run_id`, `accepted`, `detection_status`, `anomaly_event_id`, `incident_id`. No local anomaly decisions.
 
 **No files were directly modified.** This proposal is presented for Utkarsh's review. He will decide which changes to apply to `docs/detector_integration_contract.md` and `handoff/prasiddh.md`.

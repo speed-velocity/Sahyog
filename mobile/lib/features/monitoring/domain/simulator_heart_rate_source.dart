@@ -11,9 +11,6 @@ import 'dart:async';
 import '../domain/hr_sample.dart';
 import '../domain/sim_scenario.dart';
 
-/// Default interval between samples in milliseconds (3 seconds).
-static const Duration _defaultSampleInterval = Duration(seconds: 3);
-
 /// {Duration sampleInterval = const Duration(seconds: 3)}
 class SimulatorHeartRateSource {
   /// The generated sample sequence for the current scenario.
@@ -41,9 +38,9 @@ class SimulatorHeartRateSource {
   /// Create a [SimulatorHeartRateSource].
   ///
   /// The scenario must be set via [setScenario] before calling [start].
-  /// If no sampleInterval is provided, the default of 3 seconds is used.
-  SimulatorHeartRateSource({Duration? sampleInterval})
-      : sampleInterval = sampleInterval ?? _defaultSampleInterval {
+  /// [sampleInterval] defaults to 3 seconds if not provided.
+  SimulatorHeartRateSource({Duration sampleInterval = const Duration(seconds: 3)})
+      : sampleInterval = sampleInterval {
     _controller = _Controller(this);
   }
 

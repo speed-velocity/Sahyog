@@ -3,60 +3,60 @@
 **Owner:** Prasiddh  
 **Role:** Role 1 - AI/ML and Health Monitoring  
 **Branch:** `Ai/ml-and-monitoring`  
+**Task ID:** Role 1 — Alignment, contracts, Dart tests and handoff  
 **Last updated:** 2026-11-27 (updated for integration)  
-**Task ID:** Role 1 â€” Alignment, contracts, Dart tests and handoff  
 
 ## Implementation Status
 
-- **SimulatorHeartRateSource:** Aligned with approved contract â€” constructor removed `required SimScenario simScenario`, scenario now set via `setScenario()` before `start()`. Local `demoRunId` generation removed (backend-owned).
-- **HrSample:** Matches approved contract â€” immutable, BPM range 20-250 validated, UTC timestamp.
-- **HeartRateSource:** Matches approved interface â€” `Stream<HrSample> get samples`, `start()`, `stop()`.
-- **SimScenario:** Matches approved enum â€” `normal`, `trueAnomaly`, `falseAlarm`.
+- **SimulatorHeartRateSource:** Aligned with approved contract — constructor changed to `SimulatorHeartRateSource({Duration sampleInterval = const Duration(seconds: 3)})`; `setScenario()` works before `start()`; local `demoRunId` generation removed (backend-owned).
+- **HrSample:** Matches approved contract — immutable, BPM range 20-250 validated, UTC timestamp.
+- **HeartRateSource:** Matches approved interface — `Stream<HrSample> get samples`, `start()`, `stop()`.
+- **SimScenario:** Matches approved enum — `normal`, `trueAnomaly`, `falseAlarm`.
 - **BackendDetectionResult:** Parser implemented for actual `POST /api/v1/readings` response fields (`accepted`, `detection_status`, `reading_id`, `demo_run_id`, `anomaly_event_id`, `incident_id`).
-- **AnomalyEvent:** Documented limitation â€” `fromJson` cannot populate from `POST /api/v1/readings` response directly (required fields not included). `anomaly_event_id` available in response for backend database lookup.
-- **LastMomentsBuffer:** Bug fix applied â€” `lastTsVal` calculation corrected. Retention based on sample timestamps, not wall-clock time.
-- **Dart unit tests:** Created under `mobile/test/` â€” `hr_sample_test.dart`, `simulator_test.dart`, `backend_detection_result_test.dart`, `last_moments_buffer_test.dart`.
+- **AnomalyEvent:** Documented limitation — `fromJson` cannot populate from `POST /api/v1/readings` response directly (required fields not included). `anomaly_event_id` available in response for backend database lookup.
+- **LastMomentsBuffer:** Functional with bug fix retained. Retention based on sample timestamps, not wall-clock time.
+- **Dart unit tests:** Created under `mobile/test/` — `hr_sample_test.dart`, `simulator_test.dart`, `backend_detection_result_test.dart`, `last_moments_buffer_test.dart`.
 - **Documentation:** Updated three Role 1-owned proposal documents.
 
 ## Files Modified/Created
 
 ### Modified:
-- `mobile/lib/features/monitoring/domain/simulator_heart_rate_source.dart` â€” Constructor aligned with approved contract; `setScenario()` works before `start()`; local `demoRunId` removed; no duplicate timer on repeated start.
-- `mobile/lib/core/buffer/last_moments_buffer.dart` â€” Fixed `lastTsVal` calculation bug in `window()` method.
-- `docs/dart_interface_contract_proposed.md` â€” Updated to match actual public code exactly.
-- `docs/detector_integration_contract_proposed.md` â€” Updated with verified backend response fields.
-- `handoff/prasiddh_proposed.md` â€” Updated with actual implementation status and test status.
+- `mobile/lib/features/monitoring/domain/simulator_heart_rate_source.dart` — Constructor aligned with approved contract; `setScenario()` works before `start()`; local `demoRunId` removed; no duplicate timer on repeated start.
+- `mobile/lib/core/buffer/last_moments_buffer.dart` — Fixed `lastTsVal` calculation bug in `window()` method.
+- `docs/dart_interface_contract_proposed.md` — Updated to match actual public code exactly.
+- `docs/detector_integration_contract_proposed.md` — Updated with verified backend response fields.
+- `handoff/prasiddh_proposed.md` — Updated with actual implementation status and test status.
 
 ### Created:
-- `mobile/test/hr_sample_test.dart` â€” HrSample unit tests.
-- `mobile/test/simulator_test.dart` â€” Simulator unit tests.
-- `mobile/test/backend_detection_result_test.dart` â€” BackendDetectionResult unit tests.
-- `mobile/test/last_moments_buffer_test.dart` â€” LastMomentsBuffer unit tests.
+- `mobile/test/hr_sample_test.dart` — HrSample unit tests.
+- `mobile/test/simulator_test.dart` — Simulator unit tests.
+- `mobile/test/backend_detection_result_test.dart` — BackendDetectionResult unit tests.
+- `mobile/test/last_moments_buffer_test.dart` — LastMomentsBuffer unit tests.
 
 ### Not Modified (teammate-owned):
-- `docs/detector_integration_contract.md` â€” Under Utkarsh's coordination.
-- `handoff/prasiddh.md` â€” Under Utkarsh's coordination.
-- `backend/app/services/anomaly.py` â€” Under Prasiddh ownership but no changes needed.
-- `backend/app/api/readings.py` â€” Under Prasiddh/Shubhankar ownership.
+- `docs/detector_integration_contract.md` — Under Utkarsh's coordination.
+- `handoff/prasiddh.md` — Under Utkarsh's coordination.
+- `backend/app/services/anomaly.py` — Under Prasiddh ownership but no changes needed.
+- `backend/app/api/readings.py` — Under Prasiddh/Shubhankar ownership.
 
 ## Flutter/backend Three-Scenario E2E Status
 
-**Status:** `PENDING` â€” awaiting Aditya's Flutter project setup and Dart contract approval before full E2E integration testing can commence.
+**Status:** `PENDING` — awaiting Aditya's Flutter project setup and Dart contract approval before full E2E integration testing can commence.
 
 **Known integration blockers:**
 - Flutter project not yet scaffolded (Aditya's responsibility).
 - Backend `POST /api/v1/readings` response parsing verified; adapter (`BackendDetectionResult`) ready.
 - Simulator heart rate source aligned with approved contract.
-- `AnomalyEvent` fromJson cannot parse POST response â€” full event data requires backend database query via `anomaly_event_id`.
+- `AnomalyEvent` fromJson cannot parse POST response — full event data requires backend database query via `anomaly_event_id`.
 - LastMomentsBuffer functional with bug fix.
 
 ## Backend Response Compatibility Status
 
 - `POST /api/v1/readings` response confirmed fields: `reading_id`, `demo_run_id`, `accepted`, `detection_status`, `anomaly_event_id`, `incident_id`.
 - `BackendDetectionResult.fromJson()` successfully parses normal and anomaly responses.
-- `detection_status` values: `NORMAL`, `ANOMALY_DETECTED` â€” confirmed from backend schema.
+- `detection_status` values: `NORMAL`, `ANOMALY_DETECTED` — confirmed from backend schema.
 - `anomaly_event_id` and `incident_id` are optional (`null` when no anomaly detected).
-- No locally generated anomaly decisions â€” backend is authoritative.
+- No locally generated anomaly decisions — backend is authoritative.
 
 ## Aditya's Remaining Responsibilities
 
@@ -78,7 +78,7 @@
 ## Current Branch and Commit
 
 - **Branch:** `Ai/ml-and-monitoring`
-- **Latest local commit:** `73cc389` â€” feat(role-1): implement monitoring domain and simulator
+- **Latest local commit:** `2b5a193` — fix(role-1): align simulator and backend contracts
 - **Remote branch:** `origin/Ai/ml-and-monitoring` at `f85983f`
 - **Working tree:** Clean (one untracked file: `SIMULATOR_CONTRACT.md`)
 
