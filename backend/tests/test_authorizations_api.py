@@ -101,7 +101,9 @@ def test_subject_role_is_forbidden_from_caregiver_discovery() -> None:
     assert response.json()["detail"] == "Only caregivers may list authorized subjects"
 
 
-def test_caregiver_without_active_grants_gets_empty_subject_list(authorization_client) -> None:
+def test_caregiver_without_active_grants_gets_empty_subject_list(
+    authorization_client,
+) -> None:
     client, _caregiver_id, _subject_id, session = authorization_client
     session.rows = []
     response = client.get(
