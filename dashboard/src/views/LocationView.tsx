@@ -63,7 +63,7 @@ export function LocationView({
   onRetry,
   onSelectIncident,
 }: LocationViewProps) {
-  const subjectUserId = overview?.subject?.user_id ?? null;
+  const subjectUserId = overview?.subject_user_id ?? null;
   const locationResource = useLatestLocation(subjectUserId);
   const resolved = resolveLocation(locationResource.data ?? null, overview, incidents);
   const location = resolved.location;

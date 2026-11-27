@@ -14,6 +14,36 @@ class AuthorizationServiceError(RuntimeError):
     """Raised when an authorization operation is not allowed."""
 
 
+def list_active_authorizations(
+    session: Session, *, user_id: UUID, role: UserRole, limit: int = 100
+) -> list[CaregiverAuthorization]:
+    """Return active authorizations visible to the authenticated principal.
+
+    Caregivers discover subjects through their incoming grants. Subjects see
+    the grants they issued. No caller-supplied subject identifier is used for
+    authorization discovery.
+    """
+
+    if limit < 1 or limit > 100:
+        raise ValueError("limit must be between 1 and 100")
+    column = (
+        CaregiverAuthorization.caregiver_user_id
+        if role is UserRole.CAREGIVER
+        else CaregiverAuthorization.subject_user_id
+    )
+    return list(
+        session.scalars(
+            select(CaregiverAuthorization)
+            .where(
+                column == user_id,
+                CaregiverAuthorization.revoked_at.is_(None),
+            )
+            .order_by(CaregiverAuthorization.granted_at.desc())
+            .limit(limit)
+        ).all()
+    )
+
+
 def grant_caregiver_access(
     session: Session, *, subject_user_id: UUID, caregiver_user_id: UUID
 ) -> CaregiverAuthorization:

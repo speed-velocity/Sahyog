@@ -24,6 +24,10 @@ def create_demo_run(
         )
     )
     if existing is not None:
+        if existing.scenario != scenario.value:
+            raise ValueError(
+                "start_idempotency_key was already used with a different scenario"
+            )
         return existing
     now = datetime.now(UTC)
     run = DemoRun(

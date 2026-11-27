@@ -39,12 +39,7 @@ export function normalOverview(): DashboardOverview {
   ];
   return {
     generated_at: timestamp(0),
-    subject: {
-      user_id: SUBJECT_ID,
-      display_name: 'Meera Sharma',
-      age: 72,
-      data_source: 'SIMULATED',
-    },
+    subject_user_id: SUBJECT_ID,
     monitoring: {
       status: 'MONITORING',
       data_source: 'SIMULATED',
@@ -118,12 +113,7 @@ export function escalatedOverview(): DashboardOverview {
   const incident = escalatedIncident();
   return {
     generated_at: timestamp(0),
-    subject: {
-      user_id: SUBJECT_ID,
-      display_name: 'Meera Sharma',
-      age: 72,
-      data_source: 'SIMULATED',
-    },
+    subject_user_id: SUBJECT_ID,
     monitoring: {
       status: 'MONITORING',
       data_source: 'SIMULATED',
@@ -215,12 +205,7 @@ export function falseAlarmOverview(): DashboardOverview {
   const incident = falseAlarmIncident();
   return {
     generated_at: timestamp(0),
-    subject: {
-      user_id: SUBJECT_ID,
-      display_name: 'Meera Sharma',
-      age: 72,
-      data_source: 'SIMULATED',
-    },
+    subject_user_id: SUBJECT_ID,
     monitoring: {
       status: 'MONITORING',
       data_source: 'SIMULATED',
@@ -302,12 +287,7 @@ export function pendingOverview(): DashboardOverview {
   const incident = pendingIncident();
   return {
     generated_at: timestamp(0),
-    subject: {
-      user_id: SUBJECT_ID,
-      display_name: 'Meera Sharma',
-      age: 72,
-      data_source: 'SIMULATED',
-    },
+    subject_user_id: SUBJECT_ID,
     monitoring: {
       status: 'MONITORING',
       data_source: 'SIMULATED',
