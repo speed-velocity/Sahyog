@@ -64,9 +64,8 @@ export function usePollingResource<T>(
 
   useEffect(() => {
     if (!enabled) {
-      setState((current) =>
-        current.isLoading ? { ...current, isLoading: false } : current,
-      );
+      resetKeyRef.current = resetKey;
+      setState(createInitialState(false));
       return;
     }
 

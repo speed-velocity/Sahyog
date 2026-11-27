@@ -1,15 +1,7 @@
 /**
- * Proposed dashboard read contract.
- *
- * These shapes follow the canonical endpoints documented in SYSTEM_DESIGN.md
- * (dashboard overview, incident list, incident detail) and the SAHYOG database
- * field names. The backend implementation is owned by Shubhankar and is not
- * present in this branch yet, so every field is optional except identifiers and
- * timestamps that the dashboard can safely render. Unknown status values are
- * displayed verbatim and are never mapped to a different backend state.
- *
- * Location and hospital endpoints are implemented in
- * backend/app/api/location.py and are owned by Vaishnavi.
+ * Exact API wire responses are defined separately from the dashboard's
+ * presentation models. Unknown backend status values are displayed verbatim.
+ * The authorization response is available on FETCH_HEAD but not this branch.
  */
 
 export type IsoTimestamp = string;
@@ -81,27 +73,31 @@ export interface TimelineEvent {
 }
 
 export interface LocationSnapshot {
-  subject_user_id?: string | null;
-  incident_id?: string | null;
+  location_snapshot_id: string;
+  subject_user_id: string;
+  incident_id: string | null;
+  demo_run_id: string | null;
   latitude: number;
   longitude: number;
-  accuracy_meters?: number | null;
+  accuracy_meters: number | null;
   captured_at: IsoTimestamp;
-  received_at?: IsoTimestamp | null;
-  source_kind?: string | null;
-  is_stale?: boolean | null;
-  stale_after_seconds?: number | null;
+  received_at: IsoTimestamp;
+  source_kind: string;
+  is_stale: boolean;
+  stale_after_seconds: number;
 }
 
 export interface IncidentSummary {
   incident_id: string;
-  subject_user_id?: string;
-  demo_run_id?: string | null;
+  subject_user_id: string;
+  demo_run_id: string | null;
+  run_generation: number | null;
   status: string;
   created_at: IsoTimestamp;
-  updated_at?: IsoTimestamp | null;
-  verification_deadline_at?: IsoTimestamp | null;
-  resolved_at?: IsoTimestamp | null;
+  updated_at: IsoTimestamp;
+  verification_deadline_at: IsoTimestamp | null;
+  resolved_at: IsoTimestamp | null;
+  /** View-layer fields are optional because the current backend response omits them. */
   anomaly_event?: AnomalyEvent | null;
   verification?: VerificationSummary | null;
   escalation_attempts?: EscalationAttempt[] | null;
@@ -115,7 +111,7 @@ export interface IncidentDetail extends IncidentSummary {
 }
 
 export interface MonitoringSummary {
-  status?: string | null;
+  status: string;
   data_source?: string | null;
   detection_status?: string | null;
   latest_reading?: HealthReading | null;
@@ -124,13 +120,42 @@ export interface MonitoringSummary {
 }
 
 export interface DashboardOverview {
-  generated_at?: IsoTimestamp | null;
+  /** UI adapter over the backend's flat DashboardOverview response. */
   subject_user_id?: string | null;
-  monitoring?: MonitoringSummary | null;
+  monitoring: MonitoringSummary;
+  active_incident_id?: string | null;
+  incident_status?: string | null;
+  latest_update_at?: IsoTimestamp | null;
+  /** Legacy view-only fields are not returned by the current backend adapter. */
   active_incidents?: IncidentSummary[] | null;
   active_incident_count?: number | null;
   recent_incidents?: IncidentSummary[] | null;
+  /** Fields retained only for older view fixtures; the API adapter never maps these. */
+  generated_at?: IsoTimestamp | null;
   latest_location?: LocationSnapshot | null;
+}
+
+/** Exact wire response from GET /api/v1/dashboard/overview. */
+export interface DashboardOverviewResponse {
+  subject_user_id: string;
+  monitoring_status: string;
+  latest_reading: HealthReading | null;
+  active_incident: string | null;
+  incident_status: string | null;
+  latest_update_at: IsoTimestamp | null;
+}
+
+/** Exact wire response from GET /api/v1/incidents and /{incident_id}. */
+export interface IncidentResponse {
+  incident_id: string;
+  subject_user_id: string;
+  demo_run_id: string | null;
+  run_generation: number | null;
+  status: string;
+  created_at: IsoTimestamp;
+  updated_at: IsoTimestamp;
+  verification_deadline_at: IsoTimestamp | null;
+  resolved_at: IsoTimestamp | null;
 }
 
 export interface Hospital {
@@ -161,6 +186,16 @@ export type NearbyHospitalsEnvelope =
   | NearbyHospitalsResponse
   | Hospital[]
   | { hospitals: Hospital[]; provider?: string | null; disclaimer?: string | null };
+
+export interface AuthorizedSubject {
+  subject_user_id: string;
+  granted_at: string;
+  revoked_at: string | null;
+}
+
+export interface AuthorizedSubjectsResponse {
+  authorized_subjects: AuthorizedSubject[];
+}
 
 export interface ApiErrorBody {
   error?: {

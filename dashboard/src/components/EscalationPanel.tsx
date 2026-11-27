@@ -99,7 +99,7 @@ function EscalationAttemptCard({ attempt }: { attempt: EscalationAttempt }) {
 }
 
 export function EscalationPanel({ incident }: EscalationPanelProps) {
-  const attempts = incident.escalation_attempts ?? [];
+  const attempts = incident.escalation_attempts;
   const escalated = incident.status.toUpperCase() === 'ESCALATED';
 
   return (
@@ -112,7 +112,7 @@ export function EscalationPanel({ incident }: EscalationPanelProps) {
         {escalated ? <StatusBadge label="Escalated" tone="danger" /> : null}
       </div>
 
-      {escalated && attempts.length === 0 ? (
+      {escalated && attempts?.length === 0 ? (
         <div className="notice notice--warning notice--compact">
           <span className="notice__icon">
             <Icon name="phone" size={16} />
@@ -124,12 +124,14 @@ export function EscalationPanel({ incident }: EscalationPanelProps) {
         </div>
       ) : null}
 
-      {attempts.length > 0 ? (
+      {attempts && attempts.length > 0 ? (
         <div className="escalation-list">
           {attempts.map((attempt) => (
             <EscalationAttemptCard attempt={attempt} key={attempt.escalation_attempt_id} />
           ))}
         </div>
+      ) : attempts === undefined ? (
+        <p className="muted">Escalation attempt details are not included in the current incident response.</p>
       ) : !escalated ? (
         <p className="muted">No escalation attempts have been recorded for this incident.</p>
       ) : null}

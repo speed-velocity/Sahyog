@@ -10,11 +10,25 @@ interface VerificationPanelProps {
 }
 
 export function VerificationPanel({ incident, verification }: VerificationPanelProps) {
+  if (verification == null) {
+    return (
+      <section className="detail-section" aria-labelledby="verification-heading">
+        <div className="detail-section__header">
+          <div>
+            <h3 id="verification-heading">Verification</h3>
+            <p className="muted">The current incident endpoint does not include verification records.</p>
+          </div>
+        </div>
+        <p className="muted">Verification state and recorded responses are unavailable from this API response.</p>
+      </section>
+    );
+  }
+
   const responses = verification?.responses ?? [];
   const pending =
-    verification?.pending === true || incident.status.toUpperCase() === 'VERIFICATION_PENDING';
+    verification?.pending === true || incident.status.toUpperCase() === 'PENDING_VERIFICATION';
   const deadline = verification?.deadline_at ?? incident.verification_deadline_at;
-  const statusValue = verification?.status ?? (pending ? 'VERIFICATION_PENDING' : null);
+  const statusValue = verification?.status ?? (pending ? 'PENDING_VERIFICATION' : null);
   const confirmed = responses.some(
     (response) => response.response_value.toUpperCase() === 'I_AM_OK',
   );
