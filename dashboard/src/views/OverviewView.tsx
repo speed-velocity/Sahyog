@@ -154,7 +154,8 @@ export function OverviewView({
   }
 
   const monitoring = overview.monitoring;
-  const subject = overview.subject;
+  const subject_user_id = overview.subject_user_id;
+  const subject = subject_user_id ? { user_id: subject_user_id } : null;
   const latestReading = selectLatestReading(monitoring);
   const recentReadings = selectRecentReadings(monitoring);
   const activeIncidents = overview.active_incidents ?? null;

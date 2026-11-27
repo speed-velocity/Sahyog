@@ -125,7 +125,7 @@ export interface MonitoringSummary {
 
 export interface DashboardOverview {
   generated_at?: IsoTimestamp | null;
-  subject?: SubjectSummary | null;
+  subject_user_id?: string | null;
   monitoring?: MonitoringSummary | null;
   active_incidents?: IncidentSummary[] | null;
   active_incident_count?: number | null;
