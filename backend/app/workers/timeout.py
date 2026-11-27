@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
@@ -19,6 +21,34 @@ from backend.app.services.incident_service import (
 from backend.app.services.notifier import EscalationNotifier, NotificationResult
 
 SessionFactory = Callable[[], Session]
+logger = logging.getLogger(__name__)
+
+
+async def run_timeout_worker(
+    session_factory: SessionFactory,
+    notifier: EscalationNotifier,
+    stop_event: asyncio.Event,
+    *,
+    interval_seconds: float = 1.0,
+    batch_limit: int = 50,
+) -> None:
+    """Run bounded timeout batches until application shutdown."""
+
+    interval = max(0.1, interval_seconds)
+    limit = max(1, min(batch_limit, 100))
+    while not stop_event.is_set():
+        try:
+            await process_expired_incidents(
+                session_factory,
+                notifier,
+                limit=limit,
+            )
+        except Exception:
+            logger.exception("timeout worker cycle failed")
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            continue
 
 
 async def process_expired_incidents(
