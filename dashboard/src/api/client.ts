@@ -56,7 +56,10 @@ export interface RequestOptions {
   timeoutMs?: number;
 }
 
-export async function getJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function getJson<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   let timedOut = false;
@@ -76,9 +79,15 @@ export async function getJson<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   try {
+    const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('sahyog_token') : null;
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers,
       signal: controller.signal,
     });
 

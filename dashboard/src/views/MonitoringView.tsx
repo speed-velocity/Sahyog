@@ -1,21 +1,14 @@
 import type { DashboardOverview } from '../api/types';
-import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
-import { HeartRateChart } from '../components/HeartRateChart';
 import { Icon } from '../components/Icon';
 import { LoadingSkeleton } from '../components/LoadingSkeleton';
+import { LatestReadingCard } from '../components/LatestReadingCard';
 import { PageHeader } from '../components/PageHeader';
-import { ReadingTable } from '../components/ReadingTable';
 import { SectionCard } from '../components/SectionCard';
 import { SimulatedNotice } from '../components/SimulatedNotice';
 import { StatCard } from '../components/StatCard';
-import {
-  formatDateTime,
-  formatHeartRate,
-  formatRelativeTime,
-  isReadingStale,
-} from '../lib/format';
-import { selectLatestReading, selectRecentReadings } from '../lib/readings';
+import { StatusBadge } from '../components/StatusBadge';
+import { getStatusMeta } from '../lib/status';
 
 interface MonitoringViewProps {
   overview: DashboardOverview | null;
@@ -60,17 +53,8 @@ export function MonitoringView({
   }
 
   const monitoring = overview.monitoring;
-  const latest = selectLatestReading(monitoring);
-  const readings = selectRecentReadings(monitoring);
-  const staleAfter = monitoring?.stale_after_seconds;
-  const stale = latest ? isReadingStale(latest, staleAfter) : false;
-  const rates = readings.map((reading) => reading.heart_rate_bpm);
-  const average = rates.length > 0 ? rates.reduce((sum, value) => sum + value, 0) / rates.length : null;
-  const minimum = rates.length > 0 ? Math.min(...rates) : null;
-  const maximum = rates.length > 0 ? Math.max(...rates) : null;
-  const simulatedCount = readings.filter(
-    (reading) => reading.source_kind?.toUpperCase() === 'SIMULATED',
-  ).length;
+  const latest = monitoring.latest_reading;
+  const status = getStatusMeta(monitoring.status);
 
   return (
     <>
@@ -81,7 +65,7 @@ export function MonitoringView({
             Reload
           </button>
         }
-        description="Heart-rate history supplied by the backend. The dashboard does not invent readings or clinical thresholds."
+        description="The current backend overview provides a monitoring status and latest reading; no reading-history endpoint is available."
         eyebrow="Health monitoring"
         title="Health monitoring"
       />
@@ -99,92 +83,40 @@ export function MonitoringView({
 
       <div className="stat-grid stat-grid--compact">
         <StatCard
-          hint={
-            latest ? (
-              <>
-                {formatRelativeTime(latest.observed_at)}
-                {stale ? ' · stale reading' : ' · fresh reading'}
-              </>
-            ) : (
-              'No reading returned'
-            )
-          }
-          icon="heart"
-          label="Latest reading"
-          tone="blue"
-          value={formatHeartRate(latest?.heart_rate_bpm)}
-        />
-        <StatCard
-          hint={`From ${readings.length} returned readings`}
+          aside={<StatusBadge {...status} />}
+          hint="Exact value returned by the backend overview"
           icon="activity"
-          label="Average"
+          label="Monitoring status"
           tone="teal"
-          value={formatHeartRate(average)}
+          value={status.label}
         />
         <StatCard
-          hint={`${simulatedCount} marked simulated`}
-          icon="shield"
-          label="Minimum / maximum"
-          tone="slate"
-          value={
-            minimum !== null && maximum !== null
-              ? `${Math.round(minimum)} / ${Math.round(maximum)} bpm`
-              : 'Unavailable'
-          }
-        />
-        <StatCard
-          hint={
-            monitoring?.stale_after_seconds
-              ? `Backend freshness window: ${Math.round(monitoring.stale_after_seconds)} s`
-              : 'Freshness window not reported'
-          }
-          icon="clock"
-          label="Last observed"
-          tone={stale ? 'amber' : 'teal'}
-          value={latest ? formatDateTime(latest.observed_at) : 'Unavailable'}
+          hint={latest ? `Source: ${latest.source_kind}` : 'No latest reading returned'}
+          icon="heart"
+          label="Latest heart rate"
+          tone="blue"
+          value={latest ? `${latest.heart_rate_bpm} bpm` : 'Unavailable'}
         />
       </div>
 
       <SectionCard
-        actions={
-          latest ? (
-            <span className="muted">
-              Latest {formatHeartRate(latest.heart_rate_bpm)} · {formatRelativeTime(latest.observed_at)}
-            </span>
-          ) : undefined
-        }
-        subtitle="Plotted from readings returned by the backend, in observed-time order. No clinical threshold lines are drawn."
-        title="Heart-rate trend"
+        subtitle="No freshness window or reading-history list is returned by the current endpoint."
+        title="Latest backend reading"
       >
-        <HeartRateChart readings={readings} staleAfterSeconds={staleAfter} />
+        <LatestReadingCard
+          latestReading={latest}
+          onViewHistory={onRetry}
+          recentReadings={[]}
+          staleAfterSeconds={null}
+        />
       </SectionCard>
 
-      {latest && readings.length <= 1 ? (
-        <div className="notice notice--info notice--compact">
-          <span className="notice__icon">
-            <Icon name="activity" size={16} />
-          </span>
-          <p>
-            Only one reading was returned by the backend, so no trend line can be drawn. The latest
-            reading is still shown above.
-          </p>
-        </div>
-      ) : null}
-
-      <SectionCard
-        subtitle="Most recent first. Times are displayed in your local timezone."
-        title="Reading history"
-      >
-        {readings.length === 0 ? (
-          <EmptyState
-            description="The backend has not returned recent heart-rate readings for this monitored person."
-            icon="heart"
-            title="No readings available"
-          />
-        ) : (
-          <ReadingTable readings={readings} staleAfterSeconds={staleAfter} />
-        )}
-      </SectionCard>
+      <div className="notice notice--info notice--compact">
+        <span className="notice__icon">
+          <Icon name="activity" size={16} />
+        </span>
+        <p>Reading history, averages, freshness thresholds, and detector decisions are not included in the available dashboard overview response.</p>
+      </div>
 
       <p className="detail-disclaimer">
         <Icon name="shield" size={14} /> SAHYOG is a prototype. Readings are simulated unless the

@@ -1,6 +1,4 @@
-import type { DashboardOverview, IncidentSummary, LocationSnapshot } from '../api/types';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorState } from '../components/ErrorState';
+import type { DashboardOverview, LocationSnapshot } from '../api/types';
 import { Icon } from '../components/Icon';
 import { LoadingSkeleton } from '../components/LoadingSkeleton';
 import { LocationCard } from '../components/LocationCard';
@@ -10,14 +8,13 @@ import { SectionCard } from '../components/SectionCard';
 import { SimulatedNotice } from '../components/SimulatedNotice';
 import { StatusBadge } from '../components/StatusBadge';
 import { useLatestLocation } from '../hooks/useDashboardData';
-import { formatDateTime, formatRelativeTime, shortId } from '../lib/format';
+import { formatRelativeTime } from '../lib/format';
 
 interface LocationViewProps {
+  subjectUserId: string;
   overview: DashboardOverview | null;
   overviewError: Error | null;
   overviewLoading: boolean;
-  incidents: IncidentSummary[];
-  incidentsError: Error | null;
   onRetry: () => void;
   onSelectIncident: (incidentId: string) => void;
 }
@@ -28,44 +25,25 @@ interface ResolvedLocation {
   incidentId: string | null;
 }
 
-function resolveLocation(
-  locationApi: LocationSnapshot | null,
-  overview: DashboardOverview | null,
-  incidents: IncidentSummary[],
-): ResolvedLocation {
+function resolveLocation(locationApi: LocationSnapshot | null): ResolvedLocation {
   if (locationApi) {
     return { location: locationApi, origin: 'Location service snapshot', incidentId: locationApi.incident_id ?? null };
-  }
-  if (overview?.latest_location) {
-    return {
-      location: overview.latest_location,
-      origin: 'Dashboard overview',
-      incidentId: overview.latest_location.incident_id ?? null,
-    };
-  }
-  const incident = incidents.find((item) => item.location);
-  if (incident?.location) {
-    return {
-      location: incident.location,
-      origin: `Incident ${shortId(incident.incident_id)}`,
-      incidentId: incident.incident_id,
-    };
   }
   return { location: null, origin: 'No source', incidentId: null };
 }
 
 export function LocationView({
+  subjectUserId,
   overview,
   overviewError,
   overviewLoading,
-  incidents,
-  incidentsError,
   onRetry,
   onSelectIncident,
 }: LocationViewProps) {
-  const subjectUserId = overview?.subject_user_id ?? null;
   const locationResource = useLatestLocation(subjectUserId);
-  const resolved = resolveLocation(locationResource.data ?? null, overview, incidents);
+  const currentLocation =
+    locationResource.data?.subject_user_id === subjectUserId ? locationResource.data : null;
+  const resolved = resolveLocation(currentLocation);
   const location = resolved.location;
 
   return (
@@ -154,49 +132,6 @@ export function LocationView({
           >
             <NearbyHospitals location={location} />
           </SectionCard>
-
-          {incidentsError && incidents.length === 0 ? (
-            <ErrorState
-              compact
-              error={incidentsError}
-              onRetry={onRetry}
-              title="Incident locations unavailable"
-            />
-          ) : incidents.length > 0 ? (
-            <SectionCard
-              subtitle="Most recent incident with a backend-supplied location snapshot."
-              title="Incident location"
-            >
-              {(() => {
-                const incidentWithLocation = incidents.find((incident) => incident.location);
-                if (!incidentWithLocation?.location) {
-                  return (
-                    <EmptyState
-                      compact
-                      description="No returned incident includes a location snapshot."
-                      icon="location"
-                      title="No incident location available"
-                    />
-                  );
-                }
-                return (
-                  <>
-                    <div className="incident-location-meta">
-                      <div>
-                        <p className="location-incident-link__title">Incident</p>
-                        <p className="muted mono">{incidentWithLocation.incident_id}</p>
-                      </div>
-                      <StatusBadge label={incidentWithLocation.status} tone="neutral" />
-                      <span className="muted">
-                        Created {formatDateTime(incidentWithLocation.created_at)}
-                      </span>
-                    </div>
-                    <LocationCard location={incidentWithLocation.location} />
-                  </>
-                );
-              })()}
-            </SectionCard>
-          ) : null}
 
           <div className="notice notice--info notice--compact">
             <span className="notice__icon">

@@ -43,7 +43,7 @@ export function IncidentsView({
             Reload
           </button>
         }
-        description="Backend-authoritative incident lifecycle, verification, escalation, and timeline."
+        description="Incident status and timestamps returned by the backend."
         eyebrow="Emergency activity"
         title="Incidents"
       />
@@ -89,7 +89,7 @@ export function IncidentsView({
             {selectedIncidentId === null ? (
               <SectionCard title="Incident detail">
                 <EmptyState
-                  description="Select an incident from the list to review its evidence, verification, escalation, and timeline."
+                  description="Select an incident to review the status and timestamps returned by the backend."
                   icon="incident"
                   title="No incident selected"
                 />

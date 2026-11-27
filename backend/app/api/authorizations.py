@@ -3,14 +3,18 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.core.auth import require_active_principal
 from backend.app.db.session import get_db
+from backend.app.models.auth import CaregiverAuthorization
 from backend.app.schemas.auth import AuthenticatedPrincipal, UserRole
 from backend.app.schemas.authorization import (
     AuthorizationCreateRequest,
     AuthorizationResponse,
+    AuthorizedSubjectResponse,
+    AuthorizedSubjectsResponse,
 )
 from backend.app.services.authorization import (
     AuthorizationServiceError,
@@ -24,6 +28,34 @@ router = APIRouter(prefix="/authorizations", tags=["authorizations"])
 def _require_subject(principal: AuthenticatedPrincipal) -> None:
     if principal.role is not UserRole.SUBJECT:
         raise HTTPException(status_code=403, detail="Only subjects may manage access")
+
+
+@router.get("/me", response_model=AuthorizedSubjectsResponse)
+def list_my_subjects(
+    principal: AuthenticatedPrincipal = Depends(require_active_principal),
+    session: Session = Depends(get_db),
+) -> AuthorizedSubjectsResponse:
+    """Return active subjects assigned to the authenticated caregiver."""
+
+    if principal.role is not UserRole.CAREGIVER:
+        raise HTTPException(
+            status_code=403,
+            detail="Only caregivers may list authorized subjects",
+        )
+    authorizations = session.scalars(
+        select(CaregiverAuthorization)
+        .where(
+            CaregiverAuthorization.caregiver_user_id == principal.user_id,
+            CaregiverAuthorization.revoked_at.is_(None),
+        )
+        .order_by(CaregiverAuthorization.granted_at.desc())
+        .limit(100)
+    ).all()
+    return AuthorizedSubjectsResponse(
+        authorized_subjects=[
+            AuthorizedSubjectResponse.model_validate(item) for item in authorizations
+        ]
+    )
 
 
 @router.post("", response_model=AuthorizationResponse, status_code=201)

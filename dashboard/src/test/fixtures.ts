@@ -60,6 +60,7 @@ export function escalatedIncident(): IncidentSummary {
     incident_id: INCIDENT_ID,
     subject_user_id: SUBJECT_ID,
     demo_run_id: DEMO_RUN_ID,
+    run_generation: 1,
     status: 'ESCALATED',
     created_at: timestamp(-300),
     updated_at: timestamp(-45),
@@ -74,7 +75,7 @@ export function escalatedIncident(): IncidentSummary {
       detector_version: 'demo-detector-1.0',
     },
     verification: {
-      status: 'VERIFICATION_PENDING',
+      status: 'PENDING_VERIFICATION',
       pending: true,
       deadline_at: timestamp(-80),
       responses: [],
@@ -98,10 +99,15 @@ export function escalatedIncident(): IncidentSummary {
       },
     ],
     location: {
+      location_snapshot_id: 'e5f6a7b8-4444-4444-8444-444444444444',
+      subject_user_id: SUBJECT_ID,
+      incident_id: INCIDENT_ID,
+      demo_run_id: DEMO_RUN_ID,
       latitude: 18.5204,
       longitude: 73.8567,
       accuracy_meters: 12,
       captured_at: timestamp(-240),
+      received_at: timestamp(-239),
       source_kind: 'SIMULATED',
       is_stale: false,
       stale_after_seconds: 300,
@@ -171,7 +177,8 @@ export function falseAlarmIncident(): IncidentSummary {
     incident_id: 'f1f2f3f4-7777-4777-8777-777777777777',
     subject_user_id: SUBJECT_ID,
     demo_run_id: DEMO_RUN_ID,
-    status: 'FALSE_ALARM_RESOLVED',
+    run_generation: 1,
+    status: 'RESOLVED_FALSE_ALARM',
     created_at: timestamp(-240),
     updated_at: timestamp(-90),
     verification_deadline_at: timestamp(-30),
@@ -185,7 +192,7 @@ export function falseAlarmIncident(): IncidentSummary {
       detector_version: 'demo-detector-1.0',
     },
     verification: {
-      status: 'FALSE_ALARM_RESOLVED',
+      status: 'RESOLVED_FALSE_ALARM',
       pending: false,
       deadline_at: timestamp(-30),
       responses: [
@@ -260,7 +267,8 @@ export function pendingIncident(): IncidentSummary {
     incident_id: 'aa11bb22-9999-4999-8999-999999999999',
     subject_user_id: SUBJECT_ID,
     demo_run_id: DEMO_RUN_ID,
-    status: 'VERIFICATION_PENDING',
+    run_generation: 1,
+    status: 'PENDING_VERIFICATION',
     created_at: timestamp(-60),
     updated_at: timestamp(-55),
     verification_deadline_at: timestamp(30),
@@ -273,7 +281,7 @@ export function pendingIncident(): IncidentSummary {
       explanation: 'Sustained elevation detected by the demo detector.',
     },
     verification: {
-      status: 'VERIFICATION_PENDING',
+      status: 'PENDING_VERIFICATION',
       pending: true,
       deadline_at: timestamp(30),
       responses: [],
@@ -323,8 +331,10 @@ export function pendingDetail(): IncidentDetail {
 
 export function locationSnapshot(): LocationSnapshot {
   return {
+    location_snapshot_id: 'e5f6a7b8-4444-4444-8444-444444444444',
     subject_user_id: SUBJECT_ID,
     incident_id: null,
+    demo_run_id: DEMO_RUN_ID,
     latitude: 18.5204,
     longitude: 73.8567,
     accuracy_meters: 9,
