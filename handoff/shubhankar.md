@@ -14,6 +14,7 @@ Last updated: 2026-11-27
 
 ## Latest Backend Fixes
 - Added `GET /api/v1/authorizations` for active authorization discovery. Caregivers receive their incoming subject grants; subjects receive grants they issued. The endpoint does not trust a caller-supplied subject ID and applies a bounded limit.
+- Added `GET /api/v1/authorizations/me` for the caregiver dashboard. It derives the caregiver from the JWT and returns the `authorized_subjects` envelope with active subject grants only.
 - Added dashboard development origins (`localhost:5173` and `127.0.0.1:5173`) to the default CORS configuration.
 - Removed the committed password from the runtime database URL fallback. Deployments and local environments must provide `SAHYOG_DATABASE_URL` for their application connection.
 
@@ -103,7 +104,7 @@ Last updated: 2026-11-27
 - Command: Ruff check and format check on backend app/tests
 - Result: Passed.
 - Command: OpenAPI route registration check
-- Result: `/api/v1/authorizations` and `/api/v1/authorizations/{authorization_id}` registered.
+- Result: `/api/v1/authorizations`, `/api/v1/authorizations/me`, and `/api/v1/authorizations/{authorization_id}` registered.
 
 ## Commits
 - Commit ID: None; workspace is not currently a Git checkout.
