@@ -1,16 +1,8 @@
 import 'package:flutter/material.dart';
 
-enum ConnectionDisplayState {
-  connecting,
-  connected,
-  disconnected,
-}
+enum ConnectionDisplayState { connecting, connected, disconnected }
 
-enum ReadingDisplayState {
-  noReadings,
-  available,
-  unavailableOrInvalid,
-}
+enum ReadingDisplayState { noReadings, available, unavailableOrInvalid }
 
 class MonitoringReadingPanel extends StatelessWidget {
   const MonitoringReadingPanel({
@@ -27,15 +19,16 @@ class MonitoringReadingPanel extends StatelessWidget {
   final String? timestampLabel;
 
   String get _connectionLabel => switch (connectionState) {
-        ConnectionDisplayState.connecting => 'Connecting',
-        ConnectionDisplayState.connected => 'Connected',
-        ConnectionDisplayState.disconnected => 'Disconnected',
-      };
+    ConnectionDisplayState.connecting => 'Connecting',
+    ConnectionDisplayState.connected => 'Connected',
+    ConnectionDisplayState.disconnected => 'Disconnected',
+  };
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isInvalid = readingState == ReadingDisplayState.unavailableOrInvalid ||
+    final isInvalid =
+        readingState == ReadingDisplayState.unavailableOrInvalid ||
         (readingState == ReadingDisplayState.available && latestBpm == null);
 
     return Card(
@@ -50,12 +43,12 @@ class MonitoringReadingPanel extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               runSpacing: 8,
               children: [
-                Text(
-                  _connectionLabel,
-                  style: theme.textTheme.titleMedium,
-                ),
+                Text(_connectionLabel, style: theme.textTheme.titleMedium),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(4),
@@ -71,10 +64,7 @@ class MonitoringReadingPanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (readingState == ReadingDisplayState.noReadings) ...[
-              Text(
-                'No readings available',
-                style: theme.textTheme.bodyMedium,
-              ),
+              Text('No readings available', style: theme.textTheme.bodyMedium),
               const SizedBox(height: 4),
               Text(
                 'No reading timestamp available',
@@ -98,10 +88,7 @@ class MonitoringReadingPanel extends StatelessWidget {
                 ),
               ),
               if (timestampLabel != null)
-                Text(
-                  timestampLabel!,
-                  style: theme.textTheme.bodySmall,
-                ),
+                Text(timestampLabel!, style: theme.textTheme.bodySmall),
             ] else if (isInvalid) ...[
               Text(
                 'Reading unavailable or invalid',
