@@ -159,7 +159,7 @@ class LastMomentsBuffer {
     final minHr = firstHr.isNotEmpty ? firstHr.reduce(min) : null;
     final maxHr = lastHr.isNotEmpty ? lastHr.reduce(max) : null;
     final firstTsVal = firstTs.isNotEmpty ? firstTs.reduce(min) : null;
-    final lastTsVal = lastTsVal.isNotEmpty ? lastTsVal.reduce(max) : null;
+    final lastTsVal = lastTs.isNotEmpty ? lastTs.reduce(max) : null;
 
     return HrBufferSnapshot(
       samples: windowSamples,

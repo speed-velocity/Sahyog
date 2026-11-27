@@ -10,9 +10,9 @@
 - **Python detector/backend integration:** APPROVED and SIGNED OFF by Shubhankar.
 - **Detector logic:** No changes required — the rule-based detector is finalized and tested (118 unit tests passing).
 - **PostgreSQL validation:** Passed according to latest team confirmation (migration downgrade/re-upgrade round-trip and runtime privileges applied).
-- **Full Flutter/backend three-scenario E2E:** Still pending — awaiting Flutter project setup and backend integration.
 - **Altered-payload idempotency:** Fixed by backend; reusing an ingestion key with a different payload now returns HTTP 409; exact duplicate submissions replay the original result.
 - **LastMomentsBuffer evidence:** Remains transient in memory; no database migration is required. The bounded rolling buffer (60 samples / 30,000 ms default) is in-memory only with `reset()` clearing samples and rejection count.
+- **Backend `POST /api/v1/readings` response schema:** Confirmed fields are `reading_id`, `demo_run_id`, `accepted`, `detection_status`, `anomaly_event_id`, `incident_id`. No local anomaly decisions are made from the response.
 
 ## Incident Status Vocabulary
 
@@ -34,6 +34,7 @@ The following incident lifecycle statuses are correct and backend-owned:
 - **Flutter submits readings and consumes backend results.** Flutter must not independently decide whether an anomaly occurred or what the incident outcome should be.
 - **No `NOT_OK` backend status exists.** The frontend may classify `notOk` locally for its own purposes, but it has no approved backend status equivalent.
 - **Verification action `I_AM_OK`** is the only approved positive backend action for confirming a person is safe. Silence is a backend verification timeout, not a classifier result.
+- **Reading-level status vs incident lifecycle:** `ANOMALY_DETECTED` in the reading response triggers the verification workflow, but the final incident state is determined by the verification and escalation flow, not by detection alone.
 
 ## Evidence and Buffer
 
@@ -70,5 +71,6 @@ The following incident lifecycle statuses are correct and backend-owned:
 5. Confirm Flutter submits readings and consumes backend results — no independent anomaly decision.
 6. Note that full Flutter/backend three-scenario E2E is still pending.
 7. Backend baseline: `fea72cb`; Python detector integration: APPROVED and SIGNED OFF.
+8. **Confirmed:** `POST /api/v1/readings` response fields: `reading_id`, `demo_run_id`, `accepted`, `detection_status`, `anomaly_event_id`, `incident_id`. No local anomaly decisions.
 
 **No files were directly modified.** This proposal is presented for Utkarsh's review. He will decide which changes to apply to `docs/detector_integration_contract.md` and `handoff/prasiddh.md`.

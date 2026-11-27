@@ -11,31 +11,26 @@ import 'dart:async';
 import '../domain/hr_sample.dart';
 import '../domain/sim_scenario.dart';
 
-/// Signature for sample-interval calculation. The default of 3 seconds per
-/// sample approximates ~20 readings per minute, which provides sufficient
-/// density for the backend detector's persistence check (5 consecutive
-/// abnormal samples over 10 seconds) while keeping the demo within ~60
-/// seconds per scenario.
+/// Default interval between samples in milliseconds (3 seconds).
 static const Duration _defaultSampleInterval = Duration(seconds: 3);
 
-/// {required SimScenario scenario, required Duration sampleInterval}
+/// {Duration sampleInterval = const Duration(seconds: 3)}
 class SimulatorHeartRateSource {
-  /// The selected demo scenario.
-  final SimScenario simScenario;
+  /// The generated sample sequence for the current scenario.
+  /// Populated on [generateSamples] and replayed on each [start].
+  List<HrSample> _samples = [];
+
+  /// Index into [_samples] for the next emission.
+  int _index = 0;
+
+  /// The selected demo scenario. Set via [setScenario] before [start].
+  SimScenario? _scenario;
 
   /// Approximate interval between successive readings.
-  final Duration sampleInterval;
-
-  /// Internal state.
-  Duration _elapsedSinceStart = Duration.zero;
-  HrSample? _lastEmitted;
-  int _sampleCount = 0;
+  Duration sampleInterval;
 
   /// Whether the simulator is currently running.
   bool _isRunning = false;
-
-  /// The backend-assigned demo run ID, once a scenario is started.
-  String? _demoRunId;
 
   /// Controller for the samples stream. Using a broadcast controller so that
   /// multiple listeners can observe the same sequence without each getting its
@@ -44,10 +39,11 @@ class SimulatorHeartRateSource {
   late final _Controller _controller;
 
   /// Create a [SimulatorHeartRateSource].
-  SimulatorHeartRateSource({
-    required this.simScenario,
-    Duration? sampleInterval,
-  })  : sampleInterval = sampleInterval ?? _defaultSampleInterval {
+  ///
+  /// The scenario must be set via [setScenario] before calling [start].
+  /// If no sampleInterval is provided, the default of 3 seconds is used.
+  SimulatorHeartRateSource({Duration? sampleInterval})
+      : sampleInterval = sampleInterval ?? _defaultSampleInterval {
     _controller = _Controller(this);
   }
 
@@ -87,19 +83,12 @@ class SimulatorHeartRateSource {
 
   _ControllerInternal._internal();
 
-  // Backing fields for the internal _Controller class.
-  late final List<HrSample> _samples;
-  late int _index;
-
-  /// The current [SimScenario] — can be changed via [setScenario] only when
-  /// not running.
-  SimScenario get simScenario => simScenario;
+  /// The current [SimScenario], if set. Returns `null` if no scenario has
+  /// been set yet via [setScenario].
+  SimScenario? get scenario => _scenario;
 
   /// Whether the simulator is currently running.
   bool get isRunning => _isRunning;
-
-  /// The backend-assigned demo run ID, once a scenario is started.
-  String? get demoRunId => _demoRunId;
 
   /// The generated sample sequence for the current scenario (populated on
   /// [generateSamples]). Read-only after generation.
@@ -108,17 +97,23 @@ class SimulatorHeartRateSource {
   /// Index into [_samples] for the next emission.
   int get _currentIndex => _index;
 
-  /// Generate the deterministic sample sequence for the current [simScenario].
+  /// Generate the deterministic sample sequence for the current scenario.
   ///
   /// This method does NOT submit readings to the backend; it merely produces
   /// the [HrSample] values. The Flutter app is responsible for submitting
   /// each sample via `POST /api/v1/readings`.
   List<HrSample> generateSamples() {
-    final scenario = simScenario;
+    final scenario = _scenario;
     final now = DateTime.now().utc;
 
     _samples.clear();
     _index = 0;
+
+    if (scenario == null) {
+      // No scenario set; generate normal sequence as default.
+      // This should not happen in normal usage - setScenario should be called first.
+      return _generateNormal(now);
+    }
 
     // Normal scenario: stable readings around 72 BPM.
     if (scenario == SimScenario.normal) {
@@ -139,9 +134,8 @@ class SimulatorHeartRateSource {
     const int count = 30;
 
     for (int i = 0; i < count; i++) {
-      // Small random-looking but deterministic variation around 72 BPM.
-      // Using a simple deterministic pattern based on sample index.
-      final hr = 72 + (i * 1 - 1).clamp(-1, 1); // oscillates 71, 72, 73
+      // Deterministic oscillation around 72 BPM: 71, 72, 73, 72, 71, ...
+      final hr = 72 + (i % 3 - 1); // oscillates 71, 72, 73
       final ts = baseTime.add(Duration(milliseconds: i * sampleInterval.inMilliseconds));
       samples.add(HrSample(ts: ts, hr: hr));
     }
@@ -153,7 +147,7 @@ class SimulatorHeartRateSource {
   /// Pattern (per backend validated fixture):
   /// - Start with normal readings (first 5 samples at 72 BPM).
   /// - Then 5 abnormal samples at offsets 0, 3, 6, 9, 12 seconds,
-  ///   alternating spike (88+ BPM) and normal, or sustained spike.
+  ///   alternating spike (88 BPM) and normal, or sustained spike.
   /// - The previously validated anomaly fixture used five abnormal readings
   ///   at 0, 3, 6, 9 and 12 seconds. This satisfies the backend's persistence
   ///   duration check (>= 10 seconds with 5+ consecutive abnormal samples).
@@ -175,12 +169,8 @@ class SimulatorHeartRateSource {
     // Phase 2: sustained abnormal readings.
     // The backend detector requires min_consecutive_abnormal_samples=5 and
     // persistence_ms=10000. With samples every 3 seconds, 5 samples at
-    // 0, 3, 6, 9, 12 seconds gives 36ms * 5 = 18ms... wait, that's wrong.
-    // Let me recalculate: 3 seconds * 5 = 15 seconds, but we need 10 seconds
-    // persistence. The fixture uses 5 abnormal readings at 0, 3, 6, 9, 12 seconds.
-    // The gap between first and last is 12 * 3 = 36 seconds? No, the offsets are
-    // in seconds: 0, 3, 6, 9, 12. So the duration from first to last is 12 seconds.
-    // That satisfies the 10-second persistence requirement.
+    // 0, 3, 6, 9, 12 seconds gives a duration of 12 seconds between first and last,
+    // satisfying the 10-second persistence requirement.
 
     // Determine the abnormal BPM value.
     final abnormalBpm = isSpike ? 88 : 57; // spike or drop per thresholds.md
@@ -206,11 +196,10 @@ class SimulatorHeartRateSource {
 
   /// Start the simulator.
   ///
-  /// - Generates the sample sequence for the current scenario.
-  /// - Emits the first sample immediately.
-  /// - Returns the [demoRunId] from the backend once `POST /api/v1/demo/runs`
-  ///   is called. In this implementation, we generate a local demo run ID
-  ///   pattern; the actual assignment happens via the backend API.
+  /// - Generates the sample sequence for the current scenario (set via [setScenario]).
+  /// - Emits the first sample immediately on the next stream event.
+  /// - The simulator is now running; no duplicate timer is created on repeated start if already running
+  ///   (handled by the StateError check).
   Future<void> start() async {
     if (_isRunning) {
       throw StateError('A scenario is already running on this simulator instance.');
@@ -219,28 +208,24 @@ class SimulatorHeartRateSource {
     _isRunning = true;
     _sampleCount = 0;
 
-    // Generate the sample sequence.
+    // Generate the sample sequence for the current scenario.
     final newSamples = generateSamples();
     _samples.clear();
     _samples.addAll(newSamples);
     _index = 0;
 
-    // Generate a local demo run ID pattern. The actual assignment happens
-    // when the Flutter app calls POST /api/v1/demo/runs. We use a pattern
-    // that incorporates a UUID-like identifier for uniqueness.
-    _demoRunId = 'run_${DateTime.now().millisecondsSinceEpoch}_${simScenario}';
-
-    // Emit the first sample immediately if available.
+    // Emit the first sample immediately by adding to the controller.
+    // This ensures the first reading is available immediately after start().
     if (_samples.isNotEmpty && _index < _samples.length) {
-      // The stream will emit the first sample on the next add event.
+      _controller.add(_samples[_index]);
+      _index++;
     }
   }
 
   /// Stop the simulator.
   ///
   /// - Cancels any pending emissions.
-  /// - Calls the backend reset endpoint to cancel pending escalation:
-  ///   `POST /api/v1/demo/runs/{demo_run_id}/reset`
+  /// - Does NOT call any backend reset endpoint; the backend owns incident lifecycle.
   Future<void> stop() async {
     if (!_isRunning) {
       // No-op if not running.
@@ -248,19 +233,17 @@ class SimulatorHeartRateSource {
     }
 
     _isRunning = false;
-
-    // In a full integration, we would call the backend reset endpoint:
-    // POST /api/v1/demo/runs/${_demoRunId}/reset
-    // For now, just clear internal state.
     _samples.clear();
     _index = 0;
-    _demoRunId = null;
+    // Do NOT clear _scenario here; preserve the scenario so restart works with same scenario.
+    // _scenario is left intact so restarting the same instance works correctly.
   }
 
   /// Set a new scenario.
   ///
   /// May only be called when the simulator is not running. Throws [StateError]
-  /// if called while running.
+  /// if called while running. After calling this, call [start()] to generate
+  /// the sample sequence for the new scenario.
   void setScenario(SimScenario newScenario) {
     if (_isRunning) {
       throw StateError(
@@ -268,16 +251,7 @@ class SimulatorHeartRateSource {
           'simulator first, then set a new scenario.',
       );
     }
-    // The simScenario is final; replacing the instance is the recommended
-    // approach. This method is provided for API completeness per the contract.
-    // Actually, per the contract, the simScenario is set at construction time.
-    // This method exists for interface compatibility but throwing is the
-    // correct behavior — the simulator is designed with a final scenario.
-    // To change scenario, create a new SimulatorHeartRateSource instance.
-    throw StateError(
-        'Scenario change while running is not supported. Create a new '
-        'SimulatorHeartRateSource instance with the desired scenario.',
-    );
+    _scenario = newScenario;
   }
 
   /// Advance the internal index and return the next [HrSample], or `null`
