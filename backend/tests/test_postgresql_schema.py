@@ -1036,6 +1036,7 @@ def test_location_snapshot_indexes_and_ordering(test_database_engine) -> None:
 def test_location_snapshot_referenced_records_restrict_delete(
     db_session: Session,
 ) -> None:
+    # 1. Attempting to delete incident must fail with RESTRICT
     user = _user(db_session)
     run = _run(db_session, user.user_id)
     incident = _incident(
@@ -1055,21 +1056,35 @@ def test_location_snapshot_referenced_records_restrict_delete(
     db_session.add(snapshot)
     db_session.flush()
 
-    # Attempting to delete incident must fail with RESTRICT
     _expect_statement_integrity_error(
         db_session,
         text("DELETE FROM incidents WHERE incident_id = :incident_id"),
         {"incident_id": incident.incident_id},
     )
 
-    # Attempting to delete demo_run must fail with RESTRICT
+    # 2. Attempting to delete demo_run must fail with RESTRICT
+    user = _user(db_session)
+    run = _run(db_session, user.user_id)
+    snapshot = _location_snapshot(
+        user.user_id,
+        demo_run_id=run.demo_run_id,
+        run_generation=run.current_generation,
+    )
+    db_session.add(snapshot)
+    db_session.flush()
+
     _expect_statement_integrity_error(
         db_session,
         text("DELETE FROM demo_runs WHERE demo_run_id = :demo_run_id"),
         {"demo_run_id": run.demo_run_id},
     )
 
-    # Attempting to delete user must fail with RESTRICT
+    # 3. Attempting to delete user must fail with RESTRICT
+    user = _user(db_session)
+    snapshot = _location_snapshot(user.user_id)
+    db_session.add(snapshot)
+    db_session.flush()
+
     _expect_statement_integrity_error(
         db_session,
         text("DELETE FROM users WHERE user_id = :user_id"),

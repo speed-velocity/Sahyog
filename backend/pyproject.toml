@@ -32,6 +32,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = [".."]
 addopts = "-ra"
+markers = [
+    "integration: marks tests as database integration tests (deselect with '-m \"not integration\"')",
+]
 
 [tool.ruff]
 target-version = "py312"

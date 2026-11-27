@@ -220,3 +220,31 @@ def test_offline_downgrade_sql_generation_and_order() -> None:
     assert drop_table_pos < drop_uq_pos, (
         "location_snapshots must be dropped before uq_incidents_id_subject"
     )
+
+
+def test_location_snapshot_foreign_keys_ondelete_restrict() -> None:
+    """Verify all foreign key constraints on location_snapshots specify ON DELETE RESTRICT."""
+    from backend.app.models.location import LocationSnapshotRecord
+
+    fk_by_name = {
+        fk.name: fk for fk in LocationSnapshotRecord.__table__.foreign_key_constraints
+    }
+
+    assert "fk_location_snapshots_run_subject" in fk_by_name
+    assert fk_by_name["fk_location_snapshots_run_subject"].ondelete == "RESTRICT"
+
+    assert "fk_location_snapshots_incident_subject" in fk_by_name
+    assert fk_by_name["fk_location_snapshots_incident_subject"].ondelete == "RESTRICT"
+
+    assert "fk_location_snapshots_incident_subject_run" in fk_by_name
+    assert (
+        fk_by_name["fk_location_snapshots_incident_subject_run"].ondelete == "RESTRICT"
+    )
+
+    subject_fks = [
+        fk
+        for fk in LocationSnapshotRecord.__table__.foreign_keys
+        if fk.name == "fk_location_snapshots_subject_user_id"
+    ]
+    assert len(subject_fks) == 1
+    assert subject_fks[0].ondelete == "RESTRICT"
