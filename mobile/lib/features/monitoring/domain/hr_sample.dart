@@ -17,10 +17,9 @@ class HrSample {
 
   /// {required DateTime ts, required int hr}
   HrSample({
-    required DateTime ts,
-    required int hr,
-  })  :  ts = ts,
-        hr = hr {
+    required this.ts,
+    required this.hr,
+  }) {
     // Validate BPM range per demo thresholds.
     if (hr < 20 || hr > 250) {
       throw ArgumentError.value(

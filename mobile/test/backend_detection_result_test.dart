@@ -29,23 +29,25 @@ void main() {
     test('parse NORMAL response', () {
       final result = BackendDetectionResult.fromJson(normalResponse);
       expect(result, isNotNull);
-      expect(result!.accepted, isTrue);
-      expect(result.detectionStatus, equals('NORMAL'));
-      expect(result.readingId, equals('reading_001'));
-      expect(result.demoRunId, equals('run_001'));
-      expect(result.anomalyEventId, isNull);
-      expect(result.incidentId, isNull);
+      final parsed = result!;
+      expect(parsed.accepted, isTrue);
+      expect(parsed.detectionStatus, equals('NORMAL'));
+      expect(parsed.readingId, equals('reading_001'));
+      expect(parsed.demoRunId, equals('run_001'));
+      expect(parsed.anomalyEventId, isNull);
+      expect(parsed.incidentId, isNull);
     });
 
     test('parse ANOMALY_DETECTED response', () {
       final result = BackendDetectionResult.fromJson(anomalyResponse);
       expect(result, isNotNull);
-      expect(result!.accepted, isTrue);
-      expect(result.detectionStatus, equals('ANOMALY_DETECTED'));
-      expect(result.readingId, equals('reading_002'));
-      expect(result.demoRunId, equals('run_002'));
-      expect(result.anomalyEventId, equals('event_001'));
-      expect(result.incidentId, equals('incident_001'));
+      final parsed = result!;
+      expect(parsed.accepted, isTrue);
+      expect(parsed.detectionStatus, equals('ANOMALY_DETECTED'));
+      expect(parsed.readingId, equals('reading_002'));
+      expect(parsed.demoRunId, equals('run_002'));
+      expect(parsed.anomalyEventId, equals('event_001'));
+      expect(parsed.incidentId, equals('incident_001'));
     });
 
     test('handle missing required fields returns null', () {
@@ -64,10 +66,11 @@ void main() {
       };
       final result = BackendDetectionResult.fromJson(responseWithNulls);
       expect(result, isNotNull);
-      expect(result.readingId, isNull);
-      expect(result.demoRunId, isNull);
-      expect(result.anomalyEventId, isNull);
-      expect(result.incidentId, isNull);
+      final parsed = result!;
+      expect(parsed.readingId, isNull);
+      expect(parsed.demoRunId, isNull);
+      expect(parsed.anomalyEventId, isNull);
+      expect(parsed.incidentId, isNull);
     });
 
     test('malformed detection_status is accepted but noted as unknown', () {
@@ -81,10 +84,9 @@ void main() {
         'incident_id': null,
       };
       final result = BackendDetectionResult.fromJson(response);
-      // Should not return null; unexpected values are accepted per design
-      // but callers should treat them as unknown
       expect(result, isNotNull);
-      expect(result.detectionStatus, equals('UNKNOWN'));
+      final parsed = result!;
+      expect(parsed.detectionStatus, equals('UNKNOWN'));
     });
 
     test('toJson round-trip', () {
