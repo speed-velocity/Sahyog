@@ -1,5 +1,5 @@
 /// SimScenario — the three approved demo scenario identifiers.
-
+///
 /// These are the exact scenario strings sent to the backend
 /// `POST /api/v1/demo/runs` endpoint. All three scenarios share the same
 /// application pipeline; they differ only in their input data and expected
@@ -11,6 +11,7 @@
 /// - `falseAlarm`: FALSE_ALARM — same abnormal pattern triggers detection,
 ///   but the user subsequently confirms `I_AM_OK`, allowing the backend to
 ///   resolve it as `RESOLVED_FALSE_ALARM`.
+library;
 enum SimScenario {
   /// NORMAL — no emergency, no anomaly detected.
   normal,
@@ -20,7 +21,7 @@ enum SimScenario {
 
   /// FALSE_ALARM — same abnormal pattern as trueAnomaly, but user confirms
   /// I_AM_OK → RESOLVED_FALSE_ALARM.
-  falseAlarm,
+  falseAlarm;
 
   @override
   String toString() {

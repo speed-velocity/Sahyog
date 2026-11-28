@@ -12,7 +12,7 @@
 > 2. **Backend Response Schemas Are Authoritative (Flat Models):** Dashboard integration must adapt to the existing flat backend response models. The backend will **not** implement nested query wrappers or fabricated collections.
 >    - `GET /api/v1/dashboard/overview` returns the flat `DashboardOverview` model.
 >    - `GET /api/v1/incidents` and `GET /api/v1/incidents/{incident_id}` return the flat 9-scalar `IncidentResponse` model.
-> 3. **Caregiver Subject Discovery (`GET /api/v1/authorizations`):** Approved in design but **`PLANNED / PENDING BACKEND IMPLEMENTATION`**. This endpoint is not yet mounted in the backend. Until implemented, clients must pass `?subject_user_id=<uuid>` explicitly on overview and incident queries.
+> 3. **Caregiver Subject Discovery (`GET /api/v1/authorizations/me` & `GET /api/v1/authorizations`):** Fully **`IMPLEMENTED (MOUNTED)`** and tested. Caregivers discover assigned subjects via `GET /api/v1/authorizations/me` (returning `AuthorizedSubjectsResponse`) or `GET /api/v1/authorizations` (returning `list[AuthorizationResponse]`). Both caregivers and subjects can also query their active grants via `GET /api/v1/authorizations`.
 > 4. **Dual Error Conventions Preserved by Design:**
 >    - Location and hospital routes return: `{"error": {"code": "...", "message": "..."}}`.
 >    - Core backend and FastAPI routes return: `{"detail": "..."}`.
@@ -90,16 +90,32 @@
   - `GET /api/v1/hospitals/nearby` requires `require_active_principal`.
   - `POST /api/v1/readings` verifies `DemoRun.subject_user_id == principal.user_id`.
 
-### 1.4 Caregiver Subject Discovery (`PLANNED / PENDING BACKEND IMPLEMENTATION`)
+### 1.4 Caregiver Subject Discovery (`IMPLEMENTED (MOUNTED)`)
 
-- **Current State:** Caregiver discovery endpoint `GET /api/v1/authorizations` is approved in design but **not yet implemented or mounted** in `backend/app/`.
-- **Approved Design:**
+- **Current State:** Caregiver discovery is fully implemented, mounted in `backend/app/api/authorizations.py`, and verified by unit and contract test suites (`test_authorization.py`, `test_authorizations_api.py`).
+- **Caregiver Self Discovery Endpoint:**
+  - Method & Path: `GET /api/v1/authorizations/me`
+  - Auth: `require_active_principal` + `UserRole.CAREGIVER` (`403 Only caregivers may list authorized subjects`)
+  - Response (`200 OK`, `AuthorizedSubjectsResponse`):
+    ```json
+    {
+      "authorized_subjects": [
+        {
+          "subject_user_id": "a1b2c3d4-1111-4111-8111-111111111111",
+          "granted_at": "2026-11-26T12:00:00Z",
+          "revoked_at": null
+        }
+      ]
+    }
+    ```
+- **Active Authorizations Listing Endpoint:**
   - Method & Path: `GET /api/v1/authorizations`
+  - Parameters: `limit: int = Query(default=100, ge=1, le=100)`
   - Auth: `require_active_principal`
-  - Response: `list[AuthorizationResponse]`
+  - Response (`200 OK`, `list[AuthorizationResponse]`):
     - For `CAREGIVER`: lists active records where `caregiver_user_id == principal.user_id` and `revoked_at IS NULL`.
     - For `SUBJECT`: lists active records where `subject_user_id == principal.user_id` and `revoked_at IS NULL`.
-- **Client Integration Rule:** Do not call `GET /api/v1/authorizations` until backend implementation lands. Currently, caregivers must provide `?subject_user_id=<uuid>` explicitly on overview and incident endpoints.
+- **Client Integration Rule:** Caregivers should query `GET /api/v1/authorizations/me` upon login to discover authorized subjects, then populate subject selection or pass `?subject_user_id=<uuid>` to overview and incident endpoints.
 
 ---
 
@@ -122,6 +138,25 @@
 
 ### 3.1 Implemented & Mounted Endpoints (`backend/app/api/authorizations.py`)
 
+- **List My Authorized Subjects (`IMPLEMENTED (MOUNTED)`):** `GET /api/v1/authorizations/me`
+  - Auth: `require_active_principal` + `UserRole.CAREGIVER` (`403 Only caregivers may list authorized subjects`).
+  - Response (`200 OK`, `AuthorizedSubjectsResponse`): returns list of subjects delegated to the caregiver.
+- **List Active Authorizations (`IMPLEMENTED (MOUNTED)`):** `GET /api/v1/authorizations`
+  - Auth: `require_active_principal` (available to both subjects and caregivers).
+  - Query Parameters: `limit: int = 100` (`ge=1, le=100`).
+  - Response (`200 OK`, `list[AuthorizationResponse]`):
+    ```json
+    [
+      {
+        "authorization_id": "c1d2e3f4-3333-4333-8333-333333333333",
+        "subject_user_id": "a1b2c3d4-1111-4111-8111-111111111111",
+        "caregiver_user_id": "b1c2d3e4-2222-4222-8222-222222222222",
+        "granted_at": "2026-11-26T12:00:00Z",
+        "revoked_at": null
+      }
+    ]
+    ```
+  - Errors: `422 Unprocessable Entity` if limit is invalid.
 - **Grant Access (`IMPLEMENTED (MOUNTED)`):** `POST /api/v1/authorizations`
   - Auth: `require_active_principal` + `UserRole.SUBJECT` (`403 Only subjects may manage access`).
   - Request (`AuthorizationCreateRequest`, `extra="forbid"`):
@@ -145,7 +180,6 @@
   - Auth: `require_active_principal` + `UserRole.SUBJECT` (`403 Only subjects may manage access`).
   - Response (`200 OK`, `AuthorizationResponse`): returns updated record with `revoked_at` populated.
   - Errors: `404 Not Found` if authorization does not exist or does not belong to subject.
-- **List Authorizations (`PLANNED / PENDING BACKEND IMPLEMENTATION`):** `GET /api/v1/authorizations` (see §1.4).
 
 ---
 
