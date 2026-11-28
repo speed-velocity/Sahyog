@@ -4,7 +4,8 @@
 
     <application
         android:label="sahyog_mobile"
-        android:name="${applicationName}">
+        android:name="${applicationName}"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

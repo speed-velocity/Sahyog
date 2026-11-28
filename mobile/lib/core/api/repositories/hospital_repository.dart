@@ -1,11 +1,13 @@
 import '../api_client.dart';
 import '../api_response_parser.dart';
+import '../api_session.dart';
 import '../models/hospital_models.dart';
 
 class HospitalRepository {
-  HospitalRepository({required this.client});
+  HospitalRepository({required this.client, this.session});
 
   final ApiClient client;
+  final ApiSession? session;
 
   Future<NearbyHospitalsResponse> getNearbyHospitals({
     required double latitude,
@@ -19,6 +21,7 @@ class HospitalRepository {
     };
     final response = await client.get(
       'hospitals/nearby?${Uri(queryParameters: query).query}',
+      bearerToken: session?.requireAccessToken(),
     );
     return parseApiObject(
       response,

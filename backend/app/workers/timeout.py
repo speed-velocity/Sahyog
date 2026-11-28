@@ -65,19 +65,39 @@ async def process_expired_incidents(
     """
 
     current_time = now or utc_now()
+    offload_database = _should_offload_database(session_factory)
     read_session = session_factory()
     try:
-        incident_ids = find_expired_pending_incidents(
-            read_session, now=current_time, limit=limit
-        )
+        # SessionFactory supplies synchronous SQLAlchemy sessions.  Keep all
+        # database work off the event loop so a slow connection cannot block
+        # FastAPI startup, request handling, or graceful shutdown.
+        if offload_database:
+            incident_ids = await asyncio.to_thread(
+                find_expired_pending_incidents,
+                read_session,
+                now=current_time,
+                limit=limit,
+            )
+        else:
+            incident_ids = find_expired_pending_incidents(
+                read_session, now=current_time, limit=limit
+            )
     finally:
         read_session.close()
 
     processed = 0
     for incident_id in incident_ids:
-        attempt_id, idempotency_key = _start_attempt(
-            session_factory, incident_id, current_time
-        )
+        if offload_database:
+            attempt_id, idempotency_key = await asyncio.to_thread(
+                _start_attempt,
+                session_factory,
+                incident_id,
+                current_time,
+            )
+        else:
+            attempt_id, idempotency_key = _start_attempt(
+                session_factory, incident_id, current_time
+            )
         if attempt_id is None or idempotency_key is None:
             continue
 
@@ -97,9 +117,28 @@ async def process_expired_incidents(
                 completed_at=utc_now(),
             )
 
-        _complete_attempt(session_factory, incident_id, attempt_id, result)
+        if offload_database:
+            await asyncio.to_thread(
+                _complete_attempt,
+                session_factory,
+                incident_id,
+                attempt_id,
+                result,
+            )
+        else:
+            _complete_attempt(session_factory, incident_id, attempt_id, result)
         processed += 1
     return processed
+
+
+def _should_offload_database(session_factory: SessionFactory) -> bool:
+    """Use a worker thread for network databases, not in-memory SQLite tests."""
+
+    session = session_factory()
+    try:
+        return session.get_bind().dialect.name != "sqlite"
+    finally:
+        session.close()
 
 
 def _start_attempt(

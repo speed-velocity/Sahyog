@@ -114,7 +114,7 @@ class _SahyogAppState extends State<SahyogApp> {
             );
         _hospitalRepository =
             widget.hospitalRepository ??
-            HospitalRepository(client: _ownedApiClient!);
+            HospitalRepository(client: _ownedApiClient!, session: _apiSession);
         _locationRepository =
             widget.locationRepository ??
             LocationRepository(client: _ownedApiClient!, session: _apiSession);
@@ -213,7 +213,9 @@ class _SahyogAppState extends State<SahyogApp> {
 
     final hospitalRepo =
         _hospitalRepository ??
-        (client != null ? HospitalRepository(client: client) : null);
+        (client != null
+            ? HospitalRepository(client: client, session: _apiSession)
+            : null);
 
     if (hospitalRepo == null) {
       ScaffoldMessenger.of(context).showSnackBar(
