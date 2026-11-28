@@ -36,11 +36,11 @@ void main() {
         ..setScenario(SimScenario.normal);
       final samples = source.generateSamples();
       expect(samples.length, equals(30));
-      // First few should be around 72 BPM with deterministic oscillation
-      expect(samples[0].hr, equals(72));
-      expect(samples[1].hr, equals(71)); // 72 + (1 % 3 - 1) = 71
-      expect(samples[2].hr, equals(73)); // 72 + (2 % 3 - 1) = 73
-      expect(samples[3].hr, equals(72)); // 72 + (3 % 3 - 1) = 72
+      // First few should be around 72 BPM with deterministic oscillation [0, -1, 1]
+      expect(samples[0].hr, equals(72)); // 72 + offsets[0] = 72
+      expect(samples[1].hr, equals(71)); // 72 + offsets[1] = 71
+      expect(samples[2].hr, equals(73)); // 72 + offsets[2] = 73
+      expect(samples[3].hr, equals(72)); // 72 + offsets[0] = 72
     });
 
     test('normal scenario timestamps are strictly increasing', () {
@@ -71,17 +71,26 @@ void main() {
     });
 
     test('TRUE_ANOMALY and FALSE_ALARM share same reading sequence', () {
+      final baseTime = DateTime.utc(2026, 1, 1);
       final sourceTrue = SimulatorHeartRateSource()
         ..setScenario(SimScenario.trueAnomaly);
       final sourceFalse = SimulatorHeartRateSource()
         ..setScenario(SimScenario.falseAlarm);
 
-      final samplesTrue = sourceTrue.generateSamples();
-      final samplesFalse = sourceFalse.generateSamples();
+      final samplesTrue = sourceTrue.generateSamples(baseTime);
+      final samplesFalse = sourceFalse.generateSamples(baseTime);
 
       expect(samplesTrue.length, equals(samplesFalse.length));
       for (int i = 0; i < samplesTrue.length; i++) {
         expect(samplesTrue[i], equals(samplesFalse[i]));
+      }
+
+      // Also verify that without an explicit baseTime, the reading values (BPM sequence) match
+      final liveTrue = sourceTrue.generateSamples();
+      final liveFalse = sourceFalse.generateSamples();
+      expect(liveTrue.length, equals(liveFalse.length));
+      for (int i = 0; i < liveTrue.length; i++) {
+        expect(liveTrue[i].hr, equals(liveFalse[i].hr));
       }
     });
 
@@ -174,6 +183,7 @@ void main() {
     });
 
     test('scenario selection behavior', () {
+      final baseTime = DateTime.utc(2026, 1, 1);
       final normal = SimulatorHeartRateSource()
         ..setScenario(SimScenario.normal);
       final anomaly = SimulatorHeartRateSource()
@@ -181,9 +191,9 @@ void main() {
       final falseAlarm = SimulatorHeartRateSource()
         ..setScenario(SimScenario.falseAlarm);
 
-      final normalSamples = normal.generateSamples();
-      final anomalySamples = anomaly.generateSamples();
-      final falseSamples = falseAlarm.generateSamples();
+      final normalSamples = normal.generateSamples(baseTime);
+      final anomalySamples = anomaly.generateSamples(baseTime);
+      final falseSamples = falseAlarm.generateSamples(baseTime);
 
       // Normal has 30 samples
       expect(normalSamples.length, equals(30));

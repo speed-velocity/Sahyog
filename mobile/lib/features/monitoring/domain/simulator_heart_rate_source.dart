@@ -69,9 +69,12 @@ class SimulatorHeartRateSource implements HeartRateSource {
   /// This method does NOT submit readings to the backend; it merely produces
   /// the [HrSample] values. The Flutter app is responsible for submitting
   /// each sample via `POST /api/v1/readings`.
-  List<HrSample> generateSamples() {
+  ///
+  /// An optional [baseTime] can be supplied for deterministic testing or
+  /// replay; if omitted, the current UTC time is used.
+  List<HrSample> generateSamples([DateTime? baseTime]) {
     final scenario = _scenario;
-    final now = DateTime.now().toUtc();
+    final now = (baseTime ?? DateTime.now()).toUtc();
 
     _samples.clear();
     _index = 0;
@@ -97,10 +100,11 @@ class SimulatorHeartRateSource implements HeartRateSource {
   List<HrSample> _generateNormal(DateTime baseTime) {
     final samples = <HrSample>[];
     const int count = 30;
+    const offsets = [0, -1, 1];
 
     for (int i = 0; i < count; i++) {
-      // Deterministic oscillation around 72 BPM: 71, 72, 73, 72, 71, ...
-      final hr = 72 + (i % 3 - 1);
+      // Deterministic oscillation around 72 BPM: 72, 71, 73, 72, 71, 73, ...
+      final hr = 72 + offsets[i % 3];
       final ts = baseTime.add(Duration(milliseconds: i * sampleInterval.inMilliseconds));
       samples.add(HrSample(ts: ts, hr: hr));
     }
