@@ -105,7 +105,7 @@ def submit_location_update(
         )
 
     try:
-        persist_location_snapshot(
+        record = persist_location_snapshot(
             session,
             update=update,
             location_snapshot_id=snapshot.location_snapshot_id,
@@ -126,6 +126,10 @@ def submit_location_update(
             "LOCATION_PERSISTENCE_FAILED",
             "A database error occurred while persisting the location snapshot.",
         )
+
+    if record.demo_run_id != snapshot.demo_run_id:
+        snapshot = snapshot.model_copy(update={"demo_run_id": record.demo_run_id})
+        update = update.model_copy(update={"demo_run_id": record.demo_run_id})
 
     service.publish_snapshot(snapshot, update=update)
     return snapshot
