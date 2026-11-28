@@ -1,10 +1,14 @@
-import 'package:test/test.dart';
-import 'package:sahyog_monitoring/core/buffer/last_moments_buffer.dart';
-import 'package:sahyog_monitoring/domain/hr_sample.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sahyog_mobile/core/buffer/last_moments_buffer.dart';
+import 'package:sahyog_mobile/features/monitoring/domain/hr_sample.dart';
 
 void main() {
   group('LastMomentsBuffer', () {
-    final buffer = LastMomentsBuffer();
+    late LastMomentsBuffer buffer;
+
+    setUp(() {
+      buffer = LastMomentsBuffer();
+    });
 
     group('add', () {
       test('first sample accepted unconditionally', () {
@@ -62,22 +66,16 @@ void main() {
           ts: DateTime.utc(2026, 11, 23, 10, 0, 0),
           hr: 72,
         ));
-        // Add sample that is 31 seconds older than the latest - should be rejected
-        // But since it's the first sample, it would be accepted unconditionally.
-        // Let's add a second sample first.
         buffer.add(HrSample(
           ts: DateTime.utc(2026, 11, 23, 10, 0, 1),
           hr: 75,
         ));
-        // Now add an old sample that's 31 seconds before the newest
+        // Add sample that is 31 seconds older than the latest - should be rejected as out-of-order
         buffer.add(HrSample(
           ts: DateTime.utc(2026, 11, 23, 9, 59, 29),
           hr: 60,
         ));
-        // The old sample should be rejected (age > 30000ms from newest)
-        expect(buffer.sampleCount, equals(2)); // both kept? Let me check...
-        // Actually, the first sample is the "newest" initially, then the second sample
-        // becomes the newest. The third sample (old) should be rejected.
+        expect(buffer.sampleCount, equals(2));
       });
     });
 
@@ -126,7 +124,7 @@ void main() {
           hr: 72,
         ));
         final recent = buffer2.recent();
-        expect(recent.length, equals(10)); // buffer has 1, returns maxSamples=10 but clamped
+        expect(recent.length, equals(1));
       });
     });
 
@@ -150,7 +148,7 @@ void main() {
           DateTime.utc(2026, 11, 23, 10, 0, 1),
         );
         // Should include samples at 10:00:00 and 10:00:01
-        expect(snapshot.samples.length, greaterThan(0));
+        expect(snapshot.samples.length, equals(2));
         expect(snapshot.firstHr, equals(72));
         expect(snapshot.lastHr, equals(75));
       });
@@ -173,9 +171,12 @@ void main() {
           ts: DateTime.utc(2026, 11, 23, 10, 0, 0),
           hr: 72,
         ));
-        buffer.rejectionCount = 5; // reset doesn't use setter, just clears internally
-        // To test reset, we need to check internal state
-        // Actually, let me just check that reset runs without error
+        // Add a duplicate to increment rejectionCount
+        buffer.add(HrSample(
+          ts: DateTime.utc(2026, 11, 23, 10, 0, 0),
+          hr: 72,
+        ));
+        expect(buffer.rejectionCount, equals(1));
         buffer.reset();
         expect(buffer.sampleCount, equals(0));
         expect(buffer.rejectionCount, equals(0));
@@ -187,7 +188,7 @@ void main() {
         expect(buffer.recent().length, equals(0));
       });
 
-      test 'window on empty buffer returns safe snapshot', () {
+      test('window on empty buffer returns safe snapshot', () {
         final snap = buffer.window(
           DateTime.utc(2026, 11, 23, 10, 0, 0),
           DateTime.utc(2026, 11, 23, 10, 0, 1),
@@ -205,12 +206,13 @@ void main() {
           hr: 72,
         ));
         final snapshot = buffer.recent();
-        // Modifying the returned list should not affect the buffer
-        snapshot.add(HrSample(
-          ts: DateTime.utc(2026, 11, 23, 10, 0, 1),
-          hr: 90,
-        ));
-        // Buffer should still have only 1 sample
+        expect(
+          () => (snapshot as dynamic).add(HrSample(
+            ts: DateTime.utc(2026, 11, 23, 10, 0, 1),
+            hr: 90,
+          )),
+          throwsUnsupportedError,
+        );
         expect(buffer.sampleCount, equals(1));
       });
     });

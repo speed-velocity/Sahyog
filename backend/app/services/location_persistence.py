@@ -52,7 +52,9 @@ def persist_location_snapshot(
     Preserves the caller's snapshot ID and received_at timestamp if provided
     (such as from LocationService.record_location), or generates them if omitted.
     Resolves DemoRun.current_generation when demo_run_id is supplied to satisfy
-    schema constraints. Does not commit or close the caller's session.
+    schema constraints. When incident_id is supplied and demo_run_id is omitted,
+    derives the associated demo run and generation from the authoritative
+    incident record. Does not commit or close the caller's session.
     """
     now = datetime.now(UTC)
     effective_snapshot_id = location_snapshot_id or uuid4()
@@ -68,17 +70,18 @@ def persist_location_snapshot(
     else:
         captured_at = captured_at.astimezone(UTC)
 
+    effective_demo_run_id: UUID | None = update.demo_run_id
     run_generation: int | None = None
-    if update.demo_run_id is not None:
+    if effective_demo_run_id is not None:
         demo_run = session.scalar(
             select(DemoRun).where(
-                DemoRun.demo_run_id == update.demo_run_id,
+                DemoRun.demo_run_id == effective_demo_run_id,
                 DemoRun.subject_user_id == update.subject_user_id,
             )
         )
         if demo_run is None:
             raise DemoRunNotFoundError(
-                f"Demo run {update.demo_run_id} not found for subject {update.subject_user_id}"
+                f"Demo run {effective_demo_run_id} not found for subject {update.subject_user_id}"
             )
         run_generation = demo_run.current_generation
 
@@ -93,20 +96,32 @@ def persist_location_snapshot(
             raise IncidentNotFoundError(
                 f"Incident {update.incident_id} not found for subject {update.subject_user_id}"
             )
-        if (
-            update.demo_run_id is not None
-            and incident.demo_run_id is not None
-            and incident.demo_run_id != update.demo_run_id
-        ):
-            raise IncidentNotFoundError(
-                f"Incident {update.incident_id} belongs to demo run {incident.demo_run_id}, not {update.demo_run_id}"
-            )
+        if effective_demo_run_id is not None:
+            if (
+                incident.demo_run_id is not None
+                and incident.demo_run_id != effective_demo_run_id
+            ):
+                raise IncidentNotFoundError(
+                    f"Incident {update.incident_id} belongs to demo run {incident.demo_run_id}, not {effective_demo_run_id}"
+                )
+        elif incident.demo_run_id is not None:
+            effective_demo_run_id = incident.demo_run_id
+            if incident.run_generation is not None:
+                run_generation = incident.run_generation
+            else:
+                demo_run = session.scalar(
+                    select(DemoRun).where(
+                        DemoRun.demo_run_id == incident.demo_run_id,
+                        DemoRun.subject_user_id == update.subject_user_id,
+                    )
+                )
+                run_generation = demo_run.current_generation if demo_run else None
 
     record = LocationSnapshotRecord(
         location_id=effective_snapshot_id,
         subject_user_id=update.subject_user_id,
         incident_id=update.incident_id,
-        demo_run_id=update.demo_run_id,
+        demo_run_id=effective_demo_run_id,
         run_generation=run_generation,
         latitude=update.latitude,
         longitude=update.longitude,

@@ -197,6 +197,59 @@ def test_persist_snapshot_anchored_to_incident_and_demo_run(
     assert record.run_generation == 5
 
 
+def test_persist_snapshot_derives_demo_run_and_generation_from_incident(
+    sqlite_session: Session,
+) -> None:
+    user = _create_user(sqlite_session)
+    demo_run = _create_demo_run(sqlite_session, user, generation=7)
+    incident = _create_incident(sqlite_session, user, demo_run)
+    now = datetime.now(UTC)
+
+    # Note: demo_run_id is omitted by caller
+    update = LocationUpdateRequest(
+        subject_user_id=user.user_id,
+        incident_id=incident.incident_id,
+        latitude=19.0760,
+        longitude=72.8777,
+        accuracy_meters=5.0,
+        captured_at=now,
+        source_kind="INCIDENT_RESOLVED",
+    )
+
+    record = persist_location_snapshot(sqlite_session, update=update)
+
+    assert record.subject_user_id == user.user_id
+    assert record.incident_id == incident.incident_id
+    # Confirms demo_run_id and run_generation are derived from incident
+    assert record.demo_run_id == demo_run.demo_run_id
+    assert record.run_generation == 7
+
+
+def test_persist_snapshot_with_standalone_incident_without_demo_run(
+    sqlite_session: Session,
+) -> None:
+    user = _create_user(sqlite_session)
+    incident = _create_incident(sqlite_session, user, demo_run=None)
+    now = datetime.now(UTC)
+
+    update = LocationUpdateRequest(
+        subject_user_id=user.user_id,
+        incident_id=incident.incident_id,
+        latitude=19.0760,
+        longitude=72.8777,
+        accuracy_meters=5.0,
+        captured_at=now,
+        source_kind="STANDALONE_INCIDENT",
+    )
+
+    record = persist_location_snapshot(sqlite_session, update=update)
+
+    assert record.subject_user_id == user.user_id
+    assert record.incident_id == incident.incident_id
+    assert record.demo_run_id is None
+    assert record.run_generation is None
+
+
 def test_persist_snapshot_rejects_missing_demo_run(
     sqlite_session: Session,
 ) -> None:

@@ -17,10 +17,9 @@ class HrSample {
 
   /// {required DateTime ts, required int hr}
   HrSample({
-    required DateTime ts,
-    required int hr,
-  })  :  ts = ts,
-        hr = hr {
+    required this.ts,
+    required this.hr,
+  }) {
     // Validate BPM range per demo thresholds.
     if (hr < 20 || hr > 250) {
       throw ArgumentError.value(
@@ -31,8 +30,8 @@ class HrSample {
     }
   }
 
-  /// Return a copy with a potentially different timestamp.
-  HrSample copyWith({required DateTime? ts, required int? hr}) {
+  /// Return a copy with a potentially different timestamp or heart rate.
+  HrSample copyWith({DateTime? ts, int? hr}) {
     return HrSample(
       ts: ts ?? this.ts,
       hr: hr ?? this.hr,

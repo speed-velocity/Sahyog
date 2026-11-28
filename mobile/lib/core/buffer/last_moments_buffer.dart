@@ -1,17 +1,19 @@
 /// LastMomentsBuffer — bounded in-memory recent-reading buffer.
-
+///
 /// Retains recent [HrSample] values for the Flutter Monitoring UI. This buffer
 /// is distinct from the core detector's event-scoped evidence (which is
 /// abnormal-only and event-scoped). It does not perform anomaly detection and
 /// has no persistence layer, ORM model, or migration.
-
+///
 /// The buffer is bounded by sample count and retention window. Defaults are
 /// 60 samples and a 30-second retention window, as proposed in the integration
 /// contract.
+library;
 
 import 'dart:collection';
+import 'dart:math' as math;
 
-import '../domain/hr_sample.dart';
+import '../../features/monitoring/domain/hr_sample.dart';
 
 class LastMomentsBuffer {
   /// Maximum number of samples retained. Older samples are pruned when the
@@ -23,17 +25,15 @@ class LastMomentsBuffer {
   /// [add].
   final int maxMs;
 
-  /// Internal ordered deque of accepted samples, newest last.
-  final Deque<HrSample> _samples;
+  /// Internal ordered queue of accepted samples, newest last.
+  final ListQueue<HrSample> _samples;
 
   /// Count of rejected samples (duplicates and out-of-order timestamps).
   int _rejectionCount;
 
   /// Create a [LastMomentsBuffer].
-  LastMomentsBuffer({int maxSamples = 60, int maxMs = 30000})
-      : maxSamples = maxSamples,
-        maxMs = maxMs,
-        _samples = Deque<HrSample>(),
+  LastMomentsBuffer({this.maxSamples = 60, this.maxMs = 30000})
+      : _samples = ListQueue<HrSample>(),
         _rejectionCount = 0;
 
   /// Add a recent [HrSample] to the buffer.
@@ -60,7 +60,7 @@ class LastMomentsBuffer {
     // Get the latest sample's timestamp.
     final latestTs = _samples.last.ts;
 
-    // Check for duplicate timestamp (same second/millisecond as latest).
+    // Check for duplicate timestamp (same millisecond as latest).
     if (ts.millisecondsSinceEpoch == latestTs.millisecondsSinceEpoch) {
       _rejectionCount++;
       return;
@@ -72,101 +72,64 @@ class LastMomentsBuffer {
       return;
     }
 
-    // Check retention window: sample must be within maxMs of the newest sample.
-    final ageMs = latestTs.difference(ts).inMilliseconds;
-    if (ageMs > maxMs) {
-      // Sample is too old relative to the newest; reject it.
-      // But we still keep the existing samples; just don't add this one.
-      _rejectionCount++;
-      return;
-    }
-
-    // Add the sample.
+    // Check if the sample itself is already older than maxMs relative to latestTs (shouldn't happen since ts > latestTs).
     _samples.addLast(sample.copyWith(ts: ts));
 
-    // Prune oldest samples if exceeding maxSamples.
+    // Prune samples exceeding maxMs retention window relative to newest sample.
+    while (_samples.length > 1 &&
+        ts.difference(_samples.first.ts).inMilliseconds > maxMs) {
+      _samples.removeFirst();
+    }
+
+    // Prune samples exceeding maxSamples.
     while (_samples.length > maxSamples) {
       _samples.removeFirst();
     }
   }
 
-  /// Return the [limit] most recent samples in chronological order (oldest
-  /// first). Defaults to [maxSamples].
-  ///
-  /// The returned list is a snapshot; modifications to the returned list do
-  /// not affect the buffer.
-  List<HrSample> recent([int limit]) {
-    limit ??= maxSamples;
-    limit = limit.clamp(1, maxSamples);
-
-    // Return in chronological order (oldest first).
-    final result = <HrSample>[];
-    final startIdx = _samples.length - limit;
-    for (int i = max(startIdx, 0); i < _samples.length; i++) {
-      result.add(_samples[i]);
+  /// Return the [limit] most recent samples in chronological order (oldest first).
+  /// Defaults to [maxSamples].
+  List<HrSample> recent({int? limit}) {
+    final effectiveLimit = (limit ?? maxSamples).clamp(1, maxSamples);
+    final list = _samples.toList();
+    if (list.length <= effectiveLimit) {
+      return List.unmodifiable(list);
     }
-    return result;
+    return List.unmodifiable(list.sublist(list.length - effectiveLimit));
   }
 
-  /// Return a snapshot of samples whose timestamps fall within [start, end],
-  /// inclusive.
-  ///
-  /// The returned [HrBufferSnapshot] contains the first/last time, min/max BPM,
-  /// and the rejection count at the time of the snapshot.
+  /// Return a snapshot of samples whose timestamps fall within [start, end], inclusive.
   HrBufferSnapshot window(DateTime start, DateTime end) {
-    // Normalize to UTC.
     final startUtc = _normalizeToUtc(start);
     final endUtc = _normalizeToUtc(end);
 
-    final firstHr = <int>[];
-    final lastHr = <int>[];
-    final firstTs = <DateTime>[];
-    final lastTs = <DateTime>[];
-
-    for (final sample in _samples) {
-      final ts = _normalizeToUtc(sample.ts);
-      if (ts.isAfter(startUtc) && ts.isBefore(endUtc)) {
-        // Include samples exactly at the boundaries.
-        // We'll check inclusive below.
-      }
-      // Check inclusive bounds.
-      if (ts.isAfter(startUtc) || ts.isAtSameMomentAs(startUtc)) {
-        if (ts.isBefore(endUtc) || ts.isAtSameMomentAs(endUtc)) {
-          firstHr.add(sample.hr);
-          firstTs.add(ts);
-        }
-      }
-      if (ts.isBefore(endUtc) || ts.isAtSameMomentAs(endUtc)) {
-        if (ts.isAfter(startUtc) || ts.isAtSameMomentAs(startUtc)) {
-          lastHr.add(sample.hr);
-          lastTs.add(ts);
-        }
-      }
-    }
-
-    // Simplify: return all samples in the window.
-    // Actually, let's just return a snapshot with the samples that fall in window.
     final windowSamples = <HrSample>[];
     for (final sample in _samples) {
       final ts = _normalizeToUtc(sample.ts);
-      if (ts.isAfter(startUtc) || ts.isAtSameMomentAs(startUtc)) {
-        if (ts.isBefore(endUtc) || ts.isAtSameMomentAs(endUtc)) {
-          windowSamples.add(sample);
-        }
+      if ((ts.isAfter(startUtc) || ts.isAtSameMomentAs(startUtc)) &&
+          (ts.isBefore(endUtc) || ts.isAtSameMomentAs(endUtc))) {
+        windowSamples.add(sample);
       }
     }
 
-    final minHr = firstHr.isNotEmpty ? firstHr.reduce(min) : null;
-    final maxHr = lastHr.isNotEmpty ? lastHr.reduce(max) : null;
-    final firstTsVal = firstTs.isNotEmpty ? firstTs.reduce(min) : null;
-    final lastTsVal = lastTs.isNotEmpty ? lastTs.reduce(max) : null;
+    int? minHr;
+    int? maxHr;
+    DateTime? firstTs;
+    DateTime? lastTs;
+
+    if (windowSamples.isNotEmpty) {
+      firstTs = windowSamples.first.ts;
+      lastTs = windowSamples.last.ts;
+      minHr = windowSamples.map((s) => s.hr).reduce(math.min);
+      maxHr = windowSamples.map((s) => s.hr).reduce(math.max);
+    }
 
     return HrBufferSnapshot(
-      samples: windowSamples,
+      samples: List.unmodifiable(windowSamples),
       firstHr: minHr,
       lastHr: maxHr,
-      firstTs: firstTsVal,
-      lastTs: lastTsVal,
+      firstTs: firstTs,
+      lastTs: lastTs,
       rejectionCount: _rejectionCount,
     );
   }
@@ -177,14 +140,9 @@ class LastMomentsBuffer {
     _rejectionCount = 0;
   }
 
-  /// Normalize a [DateTime] to UTC, returning an aware UTC [DateTime].
+  /// Normalize a [DateTime] to UTC.
   DateTime _normalizeToUtc(DateTime ts) {
-    // If the timestamp is already UTC (no offset), keep it.
-    // If it has an offset, convert to UTC.
-    if (ts.timeZoneName == 'UTC' || ts.offset == 0) {
-      return ts;
-    }
-    return ts.toUtc();
+    return ts.isUtc ? ts : ts.toUtc();
   }
 
   /// Number of samples currently buffered.

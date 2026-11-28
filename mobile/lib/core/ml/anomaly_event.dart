@@ -1,18 +1,19 @@
 /// AnomalyEvent — backend-confirmed anomaly information model.
-
+///
 /// This model represents anomaly data as returned by the backend. It is NOT a
 /// locally generated event; it is constructed from the backend's response to
 /// `POST /api/v1/readings` or retrieved from the incident service.
-
+///
 /// The backend is the sole authority for anomaly events. Flutter must NOT
 /// create AnomalyEvent instances through local threshold detection. Any
 /// AnomalyEvent present in the UI should originate from the backend response.
-
+///
 /// Invariants:
 ///   - All timestamps are UTC.
 ///   - [kind] is either "spike" or "drop", as mapped by the backend.
 ///   - This model does not contain database IDs, subject IDs, demo run IDs,
 ///     incident IDs, or detector versions — those are backend-owned fields.
+library;
 class AnomalyEvent {
   /// The UTC timestamp when the anomaly event was detected/emitted by the
   /// backend detector.
@@ -57,7 +58,8 @@ class AnomalyEvent {
   /// The [json] map should contain the keys described in
   /// `detector_integration_contract.md` §8.2 Proposed backend mapping. If any
   /// required field is missing, the factory returns `null`.
-  factory AnomalyEvent.fromJson(Map<String, dynamic> json) {
+  /// Parse an [AnomalyEvent] from a JSON map. Returns `null` if required fields are missing.
+  static AnomalyEvent? fromJson(Map<String, dynamic> json) {
     final detectedAt =
         json['detected_at'] != null
             ? DateTime.parse(json['detected_at'] as String)

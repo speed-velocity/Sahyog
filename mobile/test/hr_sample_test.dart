@@ -1,5 +1,5 @@
-import 'package:test/test.dart';
-import 'package:sahyog_monitoring/domain/hr_sample.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sahyog_mobile/features/monitoring/domain/hr_sample.dart';
 
 void main() {
   group('HrSample', () {
@@ -37,20 +37,24 @@ void main() {
         ts: DateTime.utc(2026, 11, 23, 10, 0, 0),
         hr: 72,
       );
-      // Verify the timestamp is UTC (no timezone offset)
+      // Verify the timestamp is UTC
       expect(sample.ts.timeZoneName, isNotEmpty);
-      expect(sample.ts.offset, equals(0));
+      expect(sample.ts.isUtc, isTrue);
     });
 
-    test('immutability - ts and hr are final', () {
+    test('immutability - original remains unchanged after copyWith', () {
       final sample = HrSample(
         ts: DateTime.utc(2026, 11, 23, 10, 0, 0),
         hr: 72,
       );
-      // Attempting to modify should fail at compile time,
-      // but we verify the fields are truly final by inspection.
-      expect(() => sample.ts = DateTime.utc(2026, 11, 23, 11, 0, 0)),
-          throws UnsupportedError);
+      final copy = sample.copyWith(
+        ts: DateTime.utc(2026, 11, 23, 11, 0, 0),
+        hr: 80,
+      );
+      expect(sample.ts, equals(DateTime.utc(2026, 11, 23, 10, 0, 0)));
+      expect(sample.hr, equals(72));
+      expect(copy.ts, equals(DateTime.utc(2026, 11, 23, 11, 0, 0)));
+      expect(copy.hr, equals(80));
     });
 
     test('copyWith creates a new instance', () {

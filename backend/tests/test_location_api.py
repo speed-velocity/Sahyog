@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from backend.app.api.location import get_location_service, router
@@ -28,6 +28,8 @@ class FakeLocationSession:
         fail_on_commit: bool = False,
         missing_demo_run: bool = False,
         missing_incident: bool = False,
+        incident_demo_run_id: UUID | None = None,
+        incident_run_generation: int | None = None,
     ) -> None:
         self.committed = False
         self.rolled_back = False
@@ -37,13 +39,19 @@ class FakeLocationSession:
         self.fail_on_commit = fail_on_commit
         self.missing_demo_run = missing_demo_run
         self.missing_incident = missing_incident
+        self.incident_demo_run_id = incident_demo_run_id
+        self.incident_run_generation = incident_run_generation
         self.scalar_query_count = 0
 
     def get(self, _model, _identifier):
         return type(
             "OwnedRecord",
             (),
-            {"subject_user_id": SUBJECT_USER_ID, "demo_run_id": None},
+            {
+                "subject_user_id": SUBJECT_USER_ID,
+                "demo_run_id": self.incident_demo_run_id,
+                "run_generation": self.incident_run_generation,
+            },
         )()
 
     def scalar(self, stmt):
@@ -69,7 +77,8 @@ class FakeLocationSession:
             {
                 "subject_user_id": SUBJECT_USER_ID,
                 "current_generation": 1,
-                "demo_run_id": None,
+                "demo_run_id": self.incident_demo_run_id,
+                "run_generation": self.incident_run_generation,
                 "incident_id": uuid4(),
             },
         )()
@@ -353,6 +362,50 @@ def test_successful_update_shares_uuid_and_timestamp_and_commits() -> None:
     assert cached is not None
     assert str(cached.location_snapshot_id) == body["location_snapshot_id"]
     assert cached.received_at == db_record.received_at
+
+
+def test_location_update_with_incident_derives_demo_run_id_in_response_and_cache() -> (
+    None
+):
+    expected_run_id = uuid4()
+    incident_id = uuid4()
+    session = FakeLocationSession(
+        incident_demo_run_id=expected_run_id,
+        incident_run_generation=3,
+    )
+    client, service, _ = _build_test_client(session=session)
+
+    response = client.post(
+        "/api/v1/location/updates",
+        json={
+            "subject_user_id": str(SUBJECT_USER_ID),
+            "incident_id": str(incident_id),
+            "latitude": 18.5204,
+            "longitude": 73.8567,
+            "captured_at": "2026-01-01T11:59:00Z",
+            "source_kind": "INCIDENT_UPDATE",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["demo_run_id"] == str(expected_run_id)
+    assert body["incident_id"] == str(incident_id)
+
+    # Assert cache contains the derived demo_run_id
+    cached_subj = service.latest_for_subject(SUBJECT_USER_ID)
+    assert cached_subj is not None
+    assert cached_subj.demo_run_id == expected_run_id
+
+    cached_inc = service.latest_for_incident(incident_id)
+    assert cached_inc is not None
+    assert cached_inc.demo_run_id == expected_run_id
+
+    # Assert database record contains the derived demo_run_id and run_generation
+    assert len(session.location_records) == 1
+    db_rec = session.location_records[0]
+    assert db_rec.demo_run_id == expected_run_id
+    assert db_rec.run_generation == 3
 
 
 def test_persistence_failure_on_flush_rolls_back_and_leaves_cache_unmodified() -> None:
