@@ -1,13 +1,14 @@
 /// LastMomentsBuffer — bounded in-memory recent-reading buffer.
-
+///
 /// Retains recent [HrSample] values for the Flutter Monitoring UI. This buffer
 /// is distinct from the core detector's event-scoped evidence (which is
 /// abnormal-only and event-scoped). It does not perform anomaly detection and
 /// has no persistence layer, ORM model, or migration.
-
+///
 /// The buffer is bounded by sample count and retention window. Defaults are
 /// 60 samples and a 30-second retention window, as proposed in the integration
 /// contract.
+library;
 
 import 'dart:collection';
 import 'dart:math' as math;

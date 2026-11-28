@@ -1,8 +1,9 @@
 /// HeartRateSource — abstraction for the source of heart-rate readings.
-
+///
 /// Implementations provide a [Stream<HrSample>] of simulated or device
 /// readings. This interface defines the contract; concrete implementations
 /// (such as [SimulatorHeartRateSource]) provide the generated sequences.
+library;
 
 import 'hr_sample.dart';
 

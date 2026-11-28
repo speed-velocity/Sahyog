@@ -1,15 +1,16 @@
 /// BackendDetectionResult — model for the actual backend `POST /api/v1/readings`
 /// response.
-
+///
 /// Represents the JSON response body from the backend reading API. This model
 /// mirrors the backend's Pydantic `DetectorResult` shape (when the backend
 /// adapter is available) or the equivalent fallback types defined in
 /// `detector_backend_contract.py`.
-
+///
 /// The backend is authoritative for anomaly detection. Flutter must NOT
 /// independently decide whether an anomaly occurred. This model is used purely
 /// for parsing and representing the backend's response; it does not trigger
 /// any local detection, incident creation, or lifecycle changes.
+library;
 class BackendDetectionResult {
   /// Whether the reading was accepted and processed by the backend.
   final bool accepted;

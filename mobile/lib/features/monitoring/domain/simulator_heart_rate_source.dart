@@ -1,10 +1,11 @@
 /// SimulatorHeartRateSource — deterministic simulated heart-rate source.
-
+///
 /// Generates reproducible reading sequences per [SimScenario]. The simulator
 /// does not perform anomaly detection; it merely produces deterministic
 /// [HrSample] sequences that the Flutter app submits to the backend via
 /// `POST /api/v1/readings`. Anomaly detection is exclusively the backend's
 /// responsibility per SYSTEM_DESIGN.md D3.
+library;
 
 import 'dart:async';
 
