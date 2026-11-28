@@ -57,7 +57,8 @@ class AnomalyEvent {
   /// The [json] map should contain the keys described in
   /// `detector_integration_contract.md` §8.2 Proposed backend mapping. If any
   /// required field is missing, the factory returns `null`.
-  factory AnomalyEvent.fromJson(Map<String, dynamic> json) {
+  /// Parse an [AnomalyEvent] from a JSON map. Returns `null` if required fields are missing.
+  static AnomalyEvent? fromJson(Map<String, dynamic> json) {
     final detectedAt =
         json['detected_at'] != null
             ? DateTime.parse(json['detected_at'] as String)

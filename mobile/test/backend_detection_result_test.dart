@@ -1,5 +1,5 @@
-import 'package:test/test.dart';
-import 'package:sahyog_monitoring/core/ml/backend_detection_result.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sahyog_mobile/core/ml/backend_detection_result.dart';
 
 void main() {
   group('BackendDetectionResult', () {

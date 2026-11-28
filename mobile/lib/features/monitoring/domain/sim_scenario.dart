@@ -20,7 +20,7 @@ enum SimScenario {
 
   /// FALSE_ALARM — same abnormal pattern as trueAnomaly, but user confirms
   /// I_AM_OK → RESOLVED_FALSE_ALARM.
-  falseAlarm,
+  falseAlarm;
 
   @override
   String toString() {

@@ -52,7 +52,7 @@ class BackendDetectionResult {
   /// Parse a [BackendDetectionResult] from the backend's JSON response body.
   ///
   /// Returns `null` if the JSON is malformed or missing required fields.
-  factory BackendDetectionResult.fromJson(Map<String, dynamic> json) {
+  static BackendDetectionResult? fromJson(Map<String, dynamic> json) {
     final accepted = json['accepted'] as bool?;
     final detectionStatus = json['detection_status'] as String?;
 

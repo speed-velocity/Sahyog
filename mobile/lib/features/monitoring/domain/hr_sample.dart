@@ -31,8 +31,8 @@ class HrSample {
     }
   }
 
-  /// Return a copy with a potentially different timestamp.
-  HrSample copyWith({required DateTime? ts, required int? hr}) {
+  /// Return a copy with a potentially different timestamp or heart rate.
+  HrSample copyWith({DateTime? ts, int? hr}) {
     return HrSample(
       ts: ts ?? this.ts,
       hr: hr ?? this.hr,

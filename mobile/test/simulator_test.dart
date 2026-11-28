@@ -1,17 +1,18 @@
-import 'package:test/test.dart';
-import 'package:sahyog_monitoring/features/monitoring/domain/sim_scenario.dart';
-import 'package:sahyog_monitoring/features/monitoring/domain/simulator_heart_rate_source.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sahyog_mobile/features/monitoring/domain/hr_sample.dart';
+import 'package:sahyog_mobile/features/monitoring/domain/sim_scenario.dart';
+import 'package:sahyog_mobile/features/monitoring/domain/simulator_heart_rate_source.dart';
 
 void main() {
   group('SimulatorHeartRateSource', () {
     test('constructor defaults sampleInterval to 3 seconds', () {
       final source = SimulatorHeartRateSource();
-      expect(source.sampleInterval, equals(Duration(seconds: 3)));
+      expect(source.sampleInterval, equals(const Duration(seconds: 3)));
     });
 
     test('constructor accepts custom sampleInterval', () {
-      final source = SimulatorHeartRateSource(sampleInterval: Duration(seconds: 5));
-      expect(source.sampleInterval, equals(Duration(seconds: 5)));
+      final source = SimulatorHeartRateSource(sampleInterval: const Duration(seconds: 5));
+      expect(source.sampleInterval, equals(const Duration(seconds: 5)));
     });
 
     test('scenario can be set before start', () {
@@ -20,11 +21,12 @@ void main() {
       expect(source.scenario, equals(SimScenario.normal));
     });
 
-    test('setScenario throws when running', () {
+    test('setScenario throws when running', () async {
       final source = SimulatorHeartRateSource();
       source.setScenario(SimScenario.normal);
-      await expectLater(
-        () => source.start(),
+      await source.start();
+      expect(
+        () => source.setScenario(SimScenario.trueAnomaly),
         throwsA(isA<StateError>()),
       );
     });
@@ -65,7 +67,7 @@ void main() {
       }
       // Then 5 abnormal readings
       expect(samples[5].hr, equals(88)); // spike
-      expect(samples[6].hr, equals(88)); // or drop depending on isSpike
+      expect(samples[6].hr, equals(88));
     });
 
     test('TRUE_ANOMALY and FALSE_ALARM share same reading sequence', () {
@@ -92,8 +94,6 @@ void main() {
 
       await source.start();
 
-      // After start, at least one sample should have been emitted
-      // (the first sample is emitted immediately via _controller.add)
       expect(emitted.length, greaterThan(0));
     });
 
@@ -104,7 +104,7 @@ void main() {
 
       // All timestamps should be UTC
       for (final sample in samples) {
-        expect(sample.ts.offset, equals(0));
+        expect(sample.ts.isUtc, isTrue);
       }
 
       // Timestamps should be strictly increasing
@@ -122,17 +122,17 @@ void main() {
 
       // First sequence
       await source.start();
-      final firstSequence = source.samples.toList(greedy: true);
+      final firstSequence = source.samplesList;
       await source.stop();
 
       // Second sequence - should produce new samples
       await source.start();
-      final secondSequence = source.samples.toList(greedy: true);
+      final secondSequence = source.samplesList;
       await source.stop();
 
       // Both sequences should have samples with UTC timestamps
       for (final sample in [...firstSequence, ...secondSequence]) {
-        expect(sample.ts.offset, equals(0));
+        expect(sample.ts.isUtc, isTrue);
       }
 
       // Second sequence should not be empty
@@ -143,6 +143,7 @@ void main() {
       final source = SimulatorHeartRateSource()
         ..setScenario(SimScenario.normal);
 
+      await source.start();
       // Start twice without stopping in between should throw
       await expectLater(
         () => source.start(),
@@ -158,11 +159,7 @@ void main() {
       source.samples.listen(emitted.add);
 
       await source.start();
-      // Wait for a moment then stop
       await source.stop();
-
-      // After stop, no additional emissions should occur
-      // (the stream stays open but no new samples are added)
     });
 
     test('restart works with same instance', () async {
@@ -190,7 +187,7 @@ void main() {
 
       // Normal has 30 samples
       expect(normalSamples.length, equals(30));
-      // Anomaly/fals alarm has ~40 samples
+      // Anomaly/false alarm has 40 samples
       expect(anomalySamples.length, equals(40));
       expect(falseSamples.length, equals(40));
 
