@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.app.core.auth import require_active_principal
@@ -70,6 +71,21 @@ def ingest_reading(
             status_code=422, detail="observed_at must include a timezone"
         )
     try:
+        # Serialize submissions for the active demo run.  The detector session
+        # and reading idempotency check are both scoped by this run, so locking
+        # its row closes the race where concurrent requests both miss the
+        # lookup and invoke the stateful detector before either transaction
+        # commits.
+        run = session.scalar(
+            select(DemoRun)
+            .where(
+                DemoRun.demo_run_id == request.demo_run_id,
+                DemoRun.subject_user_id == principal.user_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise HTTPException(status_code=404, detail="demo run was not found")
         observed_at = request.observed_at.astimezone(UTC)
         existing = session.scalar(
             select(HealthReading).where(
@@ -158,6 +174,12 @@ def ingest_reading(
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="The reading could not be persisted. Please retry the request.",
+        ) from exc
     return ReadingResponse(
         reading_id=reading.reading_id,
         demo_run_id=reading.demo_run_id,
