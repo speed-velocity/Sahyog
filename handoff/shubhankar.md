@@ -110,6 +110,13 @@ Last updated: 2026-11-27
 - Result: Passed, 12 tests.
 
 ## Commits
+- Audit update: moved synchronous timeout-worker database operations off the
+  asyncio event loop for PostgreSQL, while preserving same-thread SQLite test
+  execution.
+- Verification: 249 non-integration backend tests passed; 13 worker/lifecycle
+  and three-scenario workflow tests passed; Ruff and formatting passed.
+- Live E2E remains environment-dependent on the local PostgreSQL forwarder and
+  disposable credentials.
 - Commit ID: None; workspace is not currently a Git checkout.
 - Summary: Changes are uncommitted in the shared workspace.
 
